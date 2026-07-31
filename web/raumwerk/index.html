@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>RAUMWERK · Aufmaß & Planung</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="appbar">
+    <div class="marke">RAUMWERK</div>
+    <input id="projektName" class="projekt-name" aria-label="Projektname">
+    <div class="appbar-rechts">
+      <label class="variante-wahl">Variante
+        <select id="varianteSelect"></select>
+      </label>
+      <button id="btnVarianteNeu" title="Leere Variante">+ neu</button>
+      <button id="btnVarianteKlon" title="Aktive Variante kopieren">duplizieren</button>
+      <button id="btnVarianteDel" title="Variante löschen">löschen</button>
+      <span class="trenner"></span>
+      <button id="btnReport" class="haupt">Report (PDF)</button>
+      <button id="btnReset" title="Beispielprojekt zurücksetzen">Zurücksetzen</button>
+    </div>
+  </header>
+
+  <main class="raster">
+    <!-- Linke Spalte: Erfassung & Palette -->
+    <aside class="spalte links">
+      <section class="block" id="blockRaum">
+        <h2>Raum</h2>
+        <div id="panelRaum"></div>
+      </section>
+      <section class="block" id="blockOeffnungen">
+        <h2>Öffnungen</h2>
+        <div id="panelOeffnungen"></div>
+      </section>
+      <section class="block" id="blockPalette">
+        <h2>Geräte-Palette</h2>
+        <p class="hint">Antippen, dann in den Plan klicken. Nahe einer Wand rastet das Gerät mit dem Rücken an die Wand.</p>
+        <div id="panelPalette"></div>
+      </section>
+    </aside>
+
+    <!-- Mitte: Grundriss -->
+    <section class="plan-wrap">
+      <div class="plan-toolbar">
+        <div class="werkzeuge" id="panelWerkzeuge"></div>
+        <div class="toolbar-rechts">
+          <span id="messErgebnis" class="mess-ergebnis"></span>
+          <button id="btnEinpassen" title="Ansicht einpassen">einpassen</button>
+        </div>
+      </div>
+      <svg id="plan" class="plan"></svg>
+      <div class="plan-fuss" id="statusZeile"></div>
+    </section>
+
+    <!-- Rechte Spalte: Prüfung, Auswahl, Varianten -->
+    <aside class="spalte rechts">
+      <section class="block" id="blockPruefung">
+        <h2>Normprüfung <span id="pruefBadge" class="badge"></span></h2>
+        <div id="panelPruefung"></div>
+      </section>
+      <section class="block" id="blockInspektor">
+        <h2>Auswahl</h2>
+        <div id="panelInspektor"><p class="hint">Kein Gerät ausgewählt.</p></div>
+      </section>
+      <section class="block" id="blockVarianten">
+        <h2>Varianten-Vergleich</h2>
+        <div id="panelVarianten"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

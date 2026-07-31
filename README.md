@@ -8,6 +8,29 @@ dienen. Alles Fachliche ist enthalten, alles Projektspezifische nicht.
 
 ---
 
+## RAUMWERK
+
+Auf diesem Kern baut **RAUMWERK** auf – das digitale Aufmaß- und
+Planungssystem aus dem Konzeptpapier. Umgesetzt ist die **Viewer- und
+Planungsschicht** samt proprietärem Kern:
+
+- **Komponenten-DB, Regelwerk und Normprüfung** (Kotlin, getestet):
+  `Komponente.kt`, `Regelwerk.kt`, `Pruefung.kt` – die parametrischen
+  „Klötzchen" mit echten Baumaßen, die versionierte VDE/DIN-Regelbasis und die
+  aktive Freiraum-/Normprüfung mit konservativer unterer Schranke.
+- **Browser-App** unter `web/raumwerk/`: Grundriss mit Wandnummern,
+  Klötzchen setzen/ziehen mit **Live-Abstands- und Normprüfung**, Messen,
+  Varianten-Vergleich und PDF-Report.
+
+```
+gradle test                                   # Kern inkl. Normprüfung (38 Tests)
+cd web && python3 -m http.server 8099         # dann: http://localhost:8099/raumwerk/
+```
+
+Details, Konzept-Zuordnung und was bewusst noch fehlt: **[docs/RAUMWERK.md](docs/RAUMWERK.md)**.
+
+---
+
 ## Was drin ist
 
 | Teil | Datei | Zweck |
