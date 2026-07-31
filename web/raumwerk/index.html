@@ -19,8 +19,11 @@
       <button id="btnVarianteKlon" title="Aktive Variante kopieren">duplizieren</button>
       <button id="btnVarianteDel" title="Variante löschen">löschen</button>
       <span class="trenner"></span>
+      <button id="btnExport" title="Projekt als JSON sichern">Export</button>
+      <button id="btnImport" title="Projekt aus JSON laden">Import</button>
       <button id="btnReport" class="haupt">Report (PDF)</button>
       <button id="btnReset" title="Beispielprojekt zurücksetzen">Zurücksetzen</button>
+      <input id="fileImport" type="file" accept="application/json,.json" hidden>
     </div>
   </header>
 
@@ -39,6 +42,11 @@
         <h2>Geräte-Palette</h2>
         <p class="hint">Antippen, dann in den Plan klicken. Nahe einer Wand rastet das Gerät mit dem Rücken an die Wand.</p>
         <div id="panelPalette"></div>
+      </section>
+      <section class="block" id="blockEinbauPalette">
+        <h2>Installation (Bestand)</h2>
+        <p class="hint">Vorhandene Elektro-Installation dokumentieren – Art antippen, in den Plan setzen. Höhen nach Norm.</p>
+        <div id="panelEinbauPalette" class="chips"></div>
       </section>
     </aside>
 

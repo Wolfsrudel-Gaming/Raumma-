@@ -20,6 +20,7 @@ import { fixtureSymbol, openingSymbol } from "../symbole.js";
 import { grundriss } from "../pruefung.js";
 import { finde } from "../komponenten.js";
 import { fuer, Richtung } from "../regelwerk.js";
+import * as Normmasse from "../normmasse.js";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -27,7 +28,7 @@ export class Plan {
   constructor(svg, rueckrufe = {}) {
     this.svg = svg;
     this.cb = rueckrufe;
-    this.modell = { raum: null, oeffnungen: [], einbauten: [], platzhalter: [], befunde: [], auswahlId: null };
+    this.modell = { raum: null, oeffnungen: [], einbauten: [], platzhalter: [], befunde: [], auswahl: null };
     this.modus = "auswahl";
     this.scale = 120;           // Bildpunkte je Meter
     this.ox = 40; this.oy = 40; // Ursprung des Raums auf dem Schirm
@@ -134,7 +135,10 @@ export class Plan {
       const l = G.lageImRaum(raum, e);
       const [x, y] = this.nachSchirm(l.x, l.y);
       const dreh = (e.befestigung ?? e.mount) === "WAND" ? l.winkel + 180 : 0;
-      g.push(`<g transform="translate(${x} ${y}) rotate(${dreh})">${fixtureSymbol(e.art)}</g>`);
+      const aktiv = this.modell.auswahl?.typ === "einbau" && this.modell.auswahl.id === e.id;
+      const ring = aktiv ? `<circle class="ein-aktiv" cx="${x}" cy="${y}" r="15"/>` : "";
+      g.push(`<g class="einbau-obj" data-ein="${e.id}">${ring}`
+        + `<g transform="translate(${x} ${y}) rotate(${dreh})">${fixtureSymbol(e.art)}</g></g>`);
     }
     return `<g class="einbau">${g.join("")}</g>`;
   }
@@ -143,7 +147,7 @@ export class Plan {
     const komp = finde(ph.komponente);
     if (!komp) return "";
     const eck = grundriss(ph, komp).map(p => this.nachSchirm(p[0], p[1]));
-    const ausgewaehlt = ph.id === this.modell.auswahlId;
+    const ausgewaehlt = this.modell.auswahl?.typ === "platzhalter" && this.modell.auswahl.id === ph.id;
     const warnung = this.modell.befunde.some(
       b => b.platzhalterId === ph.id && b.schwere === "WARNUNG");
 
@@ -228,12 +232,19 @@ export class Plan {
       return;
     }
 
-    const ziel = ev.target.closest?.("[data-ph]");
-    if (ziel) {
-      const id = ziel.getAttribute("data-ph");
+    const zielPh = ev.target.closest?.("[data-ph]");
+    const zielEin = ev.target.closest?.("[data-ein]");
+    if (zielPh) {
+      const id = zielPh.getAttribute("data-ph");
       const ph = this.modell.platzhalter.find(p => p.id === id);
       this.cb.onSelect?.(id);
       this.zieh = { typ: "klotz", ph, greif: [welt[0] - Number(ph.xM), welt[1] - Number(ph.yM)] };
+      this.svg.setPointerCapture?.(ev.pointerId);
+    } else if (zielEin) {
+      const id = zielEin.getAttribute("data-ein");
+      const e = this.modell.einbauten.find(x => x.id === id);
+      this.cb.onEinbauSelect?.(id);
+      this.zieh = { typ: "einbau", e };
       this.svg.setPointerCapture?.(ev.pointerId);
     } else {
       this.cb.onSelect?.(null);
@@ -252,6 +263,9 @@ export class Plan {
       const welt = this._zeigerWelt(ev);
       const ziel = this._einrasten(this.zieh.ph, welt[0] - this.zieh.greif[0], welt[1] - this.zieh.greif[1]);
       this.cb.onPlatzhalterMove?.(this.zieh.ph.id, ziel);
+    } else if (this.zieh.typ === "einbau") {
+      const welt = this._zeigerWelt(ev);
+      this.cb.onEinbauMove?.(this.zieh.e.id, this._einrastEinbau(this.zieh.e, welt[0], welt[1]));
     }
   }
 
@@ -272,6 +286,27 @@ export class Plan {
 
   /** Öffentlicher Einrast-Vorschlag – die App nutzt ihn beim Platzieren. */
   einrastVorschlag(ph, mx, my) { return this._einrasten(ph, mx, my); }
+  einrastEinbauVorschlag(einbau, mx, my) { return this._einrastEinbau(einbau, mx, my); }
+
+  /**
+   * Ein Einbau folgt dem Zeiger: Wandgeräte rasten an die nächste Wand (Wand
+   * und Abstand), Decken-/Bodengeräte werden über Anteile (0…1) des Rechtecks
+   * gelegt – so bleibt ihre Lage erhalten, wenn der Raum neu vermessen wird.
+   */
+  _einrastEinbau(einbau, mx, my) {
+    const raum = this.modell.raum;
+    const bef = Normmasse.befestigung(einbau.art);
+    if (bef === "WAND") {
+      const w = G.naechsteWand(raum, mx, my);
+      const laenge = G.wandLaengen(raum)[w.index] || 0;
+      return {
+        befestigung: "WAND", wandIndex: w.index,
+        abstandM: r2(Math.max(0, Math.min(laenge, w.abstand)))
+      };
+    }
+    const b = G.breite(raum) || 1, t = G.tiefe(raum) || 1;
+    return { befestigung: bef, relX: klemm01(mx / b), relY: klemm01(my / t) };
+  }
 
   /** Nahe einer Wand mit dem Rücken einrasten, sonst frei aufs Raster. */
   _einrasten(ph, mx, my) {
@@ -341,4 +376,5 @@ function wandWinkel(raum, i) {
 }
 
 const r2 = v => Math.round(v * 100) / 100;
+const klemm01 = v => Math.max(0, Math.min(1, Math.round(v * 1000) / 1000));
 const kurz = name => name.length > 14 ? name.slice(0, 13) + "…" : name;

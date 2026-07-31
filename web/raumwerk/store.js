@@ -70,6 +70,9 @@ export function speichern(projekt) {
   } catch (_) { /* Speicher voll o. Ä. – der Zustand bleibt im RAM erhalten */ }
 }
 
+/** Übernimmt ein eingelesenes Projekt (Import) und füllt fehlende Felder auf. */
+export function ausObjekt(o) { return migriere(o); }
+
 /** Nachsichtig: fehlende Felder auffüllen, damit ein alter Stand nicht bricht. */
 function migriere(p) {
   if (!p.raum) return beispielProjekt();

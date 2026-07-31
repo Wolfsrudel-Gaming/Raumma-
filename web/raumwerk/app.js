@@ -15,23 +15,28 @@ import { bericht } from "./report.js";
 import * as G from "../geometrie.js";
 import { KATALOG, Kategorie, finde } from "../komponenten.js";
 import { pruefe } from "../pruefung.js";
+import * as Normmasse from "../normmasse.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 let projekt = Store.laden();
-let auswahlId = null;      // ausgewähltes Klötzchen
-let paletteWahl = null;    // scharf gestellte Komponente zum Platzieren
+let auswahl = null;        // { typ: "platzhalter"|"einbau", id } oder null
+let paletteWahl = null;    // scharf gestellte Komponente (Klötzchen) zum Platzieren
+let einbauWahl = null;     // scharf gestellte Einbau-Art zum Platzieren
 let modus = "auswahl";     // auswahl | platzieren | messen-strecke | messen-flaeche
 let befunde = [];
 
 const svg = $("plan");
-const plan = new Plan(svg, { onSelect, onPlatzhalterMove, onPlace, onMessung });
+const plan = new Plan(svg, { onSelect, onPlatzhalterMove, onPlace, onMessung, onEinbauSelect, onEinbauMove });
 
 // ------------------------------------------------------------- Kern
 
 function raum() { return projekt.raum; }
 function platzhalter() { return Store.platzhalter(projekt); }
+function gewaehltPlatzhalter() { return auswahl?.typ === "platzhalter" ? platzhalter().find(p => p.id === auswahl.id) : null; }
+function gewaehltEinbau() { return auswahl?.typ === "einbau" ? projekt.einbauten.find(e => e.id === auswahl.id) : null; }
+function palettenLeeren() { paletteWahl = null; einbauWahl = null; }
 
 function pruefenJetzt() {
   befunde = pruefe(raum(), platzhalter());
@@ -43,12 +48,13 @@ function render() {
   pruefenJetzt();
   plan.setModell({
     raum: raum(), oeffnungen: projekt.oeffnungen, einbauten: projekt.einbauten,
-    platzhalter: platzhalter(), befunde, auswahlId
+    platzhalter: platzhalter(), befunde, auswahl
   }).zeichne();
   renderKopf();
   renderRaum();
   renderOeffnungen();
   renderPalette();
+  renderEinbauPalette();
   renderWerkzeuge();
   renderPruefung();
   renderInspektor();
@@ -60,8 +66,14 @@ function render() {
 // ------------------------------------------------------- Rückrufe Plan
 
 function onSelect(id) {
-  auswahlId = id;
-  if (id) { paletteWahl = null; if (modus === "platzieren") setModus("auswahl"); }
+  auswahl = id ? { typ: "platzhalter", id } : null;
+  if (id) { palettenLeeren(); if (modus === "platzieren") setModus("auswahl"); }
+  render();
+}
+
+function onEinbauSelect(id) {
+  auswahl = { typ: "einbau", id };
+  palettenLeeren(); if (modus === "platzieren") setModus("auswahl");
   render();
 }
 
@@ -72,16 +84,35 @@ function onPlatzhalterMove(id, patch) {
   render();
 }
 
-function onPlace(x, y) {
-  if (!paletteWahl) return;
-  const ph = {
-    id: Store.neueId("ph"), raumId: raum().id, komponente: paletteWahl,
-    xM: x, yM: y, drehungGrad: 0, bezeichnung: ""
-  };
-  Object.assign(ph, plan.einrastVorschlag(ph, x, y));
-  platzhalter().push(ph);
-  auswahlId = ph.id;
+function onEinbauMove(id, patch) {
+  const e = projekt.einbauten.find(x => x.id === id);
+  if (!e) return;
+  Object.assign(e, patch);
   render();
+}
+
+function onPlace(x, y) {
+  if (einbauWahl) {
+    const art = einbauWahl;
+    const e = {
+      id: Store.neueId("ein"), raumId: raum().id, art,
+      befestigung: Normmasse.befestigung(art), hoeheM: Normmasse.hoehe(art),
+      relX: 0.5, relY: 0.5
+    };
+    Object.assign(e, plan.einrastEinbauVorschlag(e, x, y));
+    projekt.einbauten.push(e);
+    auswahl = { typ: "einbau", id: e.id };
+    render();
+  } else if (paletteWahl) {
+    const ph = {
+      id: Store.neueId("ph"), raumId: raum().id, komponente: paletteWahl,
+      xM: x, yM: y, drehungGrad: 0, bezeichnung: ""
+    };
+    Object.assign(ph, plan.einrastVorschlag(ph, x, y));
+    platzhalter().push(ph);
+    auswahl = { typ: "platzhalter", id: ph.id };
+    render();
+  }
 }
 
 function onMessung(e) {
@@ -249,8 +280,24 @@ function renderPalette() {
   panel.querySelectorAll("[data-komp]").forEach(b =>
     b.onclick = () => {
       const s = b.getAttribute("data-komp");
-      paletteWahl = paletteWahl === s ? null : s;
-      setModus(paletteWahl ? "platzieren" : "auswahl");
+      const an = paletteWahl !== s;
+      palettenLeeren(); paletteWahl = an ? s : null;
+      setModus(an ? "platzieren" : "auswahl");
+    });
+}
+
+// Einbauten des Bestands (Steckdosen, Schalter, Leuchten …) mit Norm-Höhen.
+function renderEinbauPalette() {
+  const panel = $("panelEinbauPalette");
+  if (!panel) return;
+  panel.innerHTML = [...Normmasse.ARTEN].map(([k, label]) =>
+    `<button class="chip ${einbauWahl === k ? "aktiv" : ""}" data-ein-art="${k}" title="${esc(label)}">${esc(label)}</button>`).join("");
+  panel.querySelectorAll("[data-ein-art]").forEach(b =>
+    b.onclick = () => {
+      const a = b.getAttribute("data-ein-art");
+      const an = einbauWahl !== a;
+      palettenLeeren(); einbauWahl = an ? a : null;
+      setModus(an ? "platzieren" : "auswahl");
     });
 }
 
@@ -262,21 +309,23 @@ function renderWerkzeuge() {
   panel.innerHTML = wz.map(([m, t]) =>
     `<button class="werkzeug ${modus === m ? "aktiv" : ""}" data-modus="${m}">${t}</button>`).join("");
   panel.querySelectorAll("[data-modus]").forEach(b =>
-    b.onclick = () => { paletteWahl = null; $("messErgebnis").textContent = ""; setModus(b.getAttribute("data-modus")); });
+    b.onclick = () => { palettenLeeren(); $("messErgebnis").textContent = ""; setModus(b.getAttribute("data-modus")); });
 }
 
 function setModus(m) {
   modus = m;
   plan.setModus(m);
   renderPalette();
+  renderEinbauPalette();
   renderWerkzeuge();
   renderStatus();
 }
 
 function renderStatus() {
+  const wasName = einbauWahl ? Normmasse.ARTEN.get(einbauWahl) : finde(paletteWahl)?.name ?? "";
   const txt = {
     auswahl: "Gerät ziehen zum Verschieben · nahe Wand rastet es ein · Rad zoomt",
-    platzieren: `„${finde(paletteWahl)?.name ?? ""}" platzieren – in den Plan klicken`,
+    platzieren: `„${wasName}" platzieren – in den Plan klicken`,
     "messen-strecke": "Zwei Punkte klicken – Länge als untere Schranke",
     "messen-flaeche": "Ecken klicken, Doppelklick schließt die Fläche"
   }[modus];
@@ -305,9 +354,11 @@ function renderPruefung() {
 // ----------------------------------------------------------- Inspektor
 
 function renderInspektor() {
-  const ph = platzhalter().find(p => p.id === auswahlId);
   const panel = $("panelInspektor");
-  if (!ph) { panel.innerHTML = `<p class="hint">Kein Gerät ausgewählt. Klick ein Klötzchen im Plan an.</p>`; return; }
+  const ein = gewaehltEinbau();
+  if (ein) { renderEinbauInspektor(panel, ein); return; }
+  const ph = gewaehltPlatzhalter();
+  if (!ph) { panel.innerHTML = `<p class="hint">Nichts ausgewählt. Klick ein Klötzchen oder einen Einbau im Plan an.</p>`; return; }
   const k = finde(ph.komponente);
   const meine = befunde.filter(b => b.platzhalterId === ph.id && b.schwere === "WARNUNG");
   panel.innerHTML = `
@@ -331,8 +382,29 @@ function renderInspektor() {
   $("iDel").onclick = () => {
     const v = Store.aktiveVariante(projekt);
     v.platzhalter = v.platzhalter.filter(p => p.id !== ph.id);
-    auswahlId = null; render();
+    auswahl = null; render();
   };
+}
+
+function renderEinbauInspektor(panel, ein) {
+  const bef = ein.befestigung ?? Normmasse.befestigung(ein.art);
+  panel.innerHTML = `
+    <div class="insp-titel">Einbau (Bestand)</div>
+    <div class="feld"><label>Art</label><select id="eArt">
+      ${[...Normmasse.ARTEN].map(([k, v]) => `<option value="${k}" ${ein.art === k ? "selected" : ""}>${esc(v)}</option>`).join("")}
+    </select></div>
+    <div class="insp-zeile"><span>Befestigung</span><span>${bef === "WAND" ? `Wand ${(ein.wandIndex ?? 0) + 1}` : bef === "DECKE" ? "Decke" : bef === "BODEN" ? "Boden" : "frei"}</span></div>
+    <div class="feld"><label>Höhe über Boden (m)</label><input id="eHoehe" type="number" step="0.05" value="${ein.hoeheM == null ? "" : num(ein.hoeheM)}" placeholder="${bef === "DECKE" ? "an der Decke" : "Richtwert"}"></div>
+    <p class="hint">Ziehen verschiebt den Einbau; Wandgeräte rasten an die nächste Wand.</p>
+    <button class="loeschen" id="eDel">Einbau entfernen</button>`;
+  $("eArt").onchange = e => {
+    ein.art = e.target.value;
+    ein.befestigung = Normmasse.befestigung(ein.art);
+    ein.hoeheM = Normmasse.hoehe(ein.art);        // Norm-Höhe zur neuen Art
+    render();
+  };
+  bind("eHoehe", "change", v => { ein.hoeheM = v.trim() === "" ? null : (parseFloat(v) || 0); render(); });
+  $("eDel").onclick = () => { projekt.einbauten = projekt.einbauten.filter(x => x.id !== ein.id); auswahl = null; render(); };
 }
 
 // ---------------------------------------------------------- Varianten
@@ -353,7 +425,7 @@ function renderVarianten() {
   </table>`;
   panel.querySelectorAll("[data-var]").forEach(tr => {
     const i = parseInt(tr.getAttribute("data-var"));
-    tr.querySelector(".var-wahl").onclick = e => { e.preventDefault(); projekt.aktiveVariante = i; auswahlId = null; render(); };
+    tr.querySelector(".var-wahl").onclick = e => { e.preventDefault(); projekt.aktiveVariante = i; auswahl = null; render(); };
   });
   panel.querySelectorAll("[data-ren]").forEach(b => b.onclick = () => {
     const i = parseInt(b.getAttribute("data-ren"));
@@ -366,12 +438,12 @@ function renderVarianten() {
 
 function verdrahteKopf() {
   bind("projektName", "change", v => { projekt.name = v; Store.speichern(projekt); });
-  $("varianteSelect").onchange = e => { projekt.aktiveVariante = parseInt(e.target.value); auswahlId = null; render(); };
-  $("btnVarianteNeu").onclick = () => { Store.varianteNeu(projekt); auswahlId = null; render(); };
-  $("btnVarianteKlon").onclick = () => { Store.varianteKlonen(projekt); auswahlId = null; render(); };
+  $("varianteSelect").onchange = e => { projekt.aktiveVariante = parseInt(e.target.value); auswahl = null; render(); };
+  $("btnVarianteNeu").onclick = () => { Store.varianteNeu(projekt); auswahl = null; render(); };
+  $("btnVarianteKlon").onclick = () => { Store.varianteKlonen(projekt); auswahl = null; render(); };
   $("btnVarianteDel").onclick = () => {
     if (projekt.varianten.length > 1 && confirm("Aktive Variante löschen?")) {
-      Store.varianteLoeschen(projekt, projekt.aktiveVariante); auswahlId = null; render();
+      Store.varianteLoeschen(projekt, projekt.aktiveVariante); auswahl = null; render();
     }
   };
   $("btnReport").onclick = () => {
@@ -380,21 +452,53 @@ function verdrahteKopf() {
   };
   $("btnReset").onclick = () => {
     if (confirm("Zum Beispielprojekt zurücksetzen? Der aktuelle Stand geht verloren.")) {
-      projekt = Store.beispielProjekt(); auswahlId = null; paletteWahl = null; setModus("auswahl"); render(); plan.einpassen();
+      projekt = Store.beispielProjekt(); auswahl = null; paletteWahl = null; setModus("auswahl"); render(); plan.einpassen();
     }
   };
   $("btnEinpassen").onclick = () => plan.einpassen();
+  $("btnExport").onclick = exportJson;
+  $("btnImport").onclick = () => $("fileImport").click();
+  $("fileImport").onchange = e => importJson(e.target.files[0]);
+}
+
+/** Projekt als JSON sichern – zum Teilen oder als Backup (kundenlink-tauglich). */
+function exportJson() {
+  const blob = new Blob([JSON.stringify(projekt, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (projekt.name || "raumwerk").replace(/[^\w\-]+/g, "_") + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** Ein gesichertes Projekt wieder einlesen. Nachsichtig: Unsinn wird abgewiesen. */
+function importJson(datei) {
+  if (!datei) return;
+  const leser = new FileReader();
+  leser.onload = () => {
+    try {
+      const obj = Store.ausObjekt(JSON.parse(leser.result));
+      if (!obj.raum) throw new Error("kein Raum");
+      projekt = obj; auswahl = null; palettenLeeren(); setModus("auswahl"); render(); plan.einpassen();
+    } catch (_) {
+      alert("Die Datei ist kein gültiges RAUMWERK-Projekt.");
+    }
+  };
+  leser.readAsText(datei);
+  $("fileImport").value = "";
 }
 
 // -------------------------------------------------------- Tastatur
 
 window.addEventListener("keydown", e => {
   if (e.target.matches("input, select, textarea")) return;
-  const ph = platzhalter().find(p => p.id === auswahlId);
-  if (e.key === "Escape") { paletteWahl = null; auswahlId = null; setModus("auswahl"); render(); }
-  else if (ph && (e.key === "Delete" || e.key === "Backspace")) {
-    const v = Store.aktiveVariante(projekt);
-    v.platzhalter = v.platzhalter.filter(p => p.id !== ph.id); auswahlId = null; render();
+  const ph = gewaehltPlatzhalter();
+  const ein = gewaehltEinbau();
+  if (e.key === "Escape") { palettenLeeren(); auswahl = null; setModus("auswahl"); render(); }
+  else if ((ph || ein) && (e.key === "Delete" || e.key === "Backspace")) {
+    if (ph) Store.aktiveVariante(projekt).platzhalter = Store.aktiveVariante(projekt).platzhalter.filter(p => p.id !== ph.id);
+    else projekt.einbauten = projekt.einbauten.filter(x => x.id !== ein.id);
+    auswahl = null; render();
   } else if (ph && (e.key === "r" || e.key === "R")) {
     ph.drehungGrad = (((ph.drehungGrad || 0) + (e.shiftKey ? -15 : 15)) % 360 + 360) % 360; render();
   }
