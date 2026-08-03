@@ -64,6 +64,11 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
 - **Live-Normprüfung** – jede Freiraumzone ist grün, solange der geforderte
   Bedienbereich frei ist, und **rot** bei Unterschreitung; rechts die Befunde
   mit Quelle und Regelwerk-Fassung. Das ist das Killer-Feature und der USP.
+- **Bestand dokumentieren** – Einbauten (Steckdosen, Schalter, Leuchten …) mit
+  Norm-Höhen setzen und verschieben; wandgebundene rasten an die Wand.
+- **Verortete Fotos** – Foto-Pins im Grundriss, an die Stelle gezogen; ein
+  Klick zeigt das echte Bild groß (§3: „Typenschild, Klemmen lesbar"). Bilder
+  werden beim Import verkleinert und im Report als Galerie ausgegeben.
 - **Messen** – Punkt-zu-Punkt und Fläche, konservativ (untere Schranke).
 - **Varianten** – Szenarien anlegen, duplizieren, vergleichen (Warnungen je
   Variante). Genau das „Alternativen durchspielen ohne zweite Anfahrt".
@@ -123,8 +128,8 @@ Ehrlichkeit über die Grenzen, wie im Konzept:
   gezeichnet. Die Punktwolke ist die Realität, das hier gebaute Kern-Modell die
   planbare, prüfbare Struktur darüber; beide werden in der Verarbeitungsschicht
   zusammengeführt.
-- **Verortete Originalfotos**, **Fotorealismus (Splatting)**, **Mehrraum-
-  Anordnung** – Ausbaustufen aus den Phasen 2/3 des Konzepts.
+- **Fotorealismus (Splatting)** und **Mehrraum-Anordnung** – Ausbaustufen aus
+  den Phasen 2/3 des Konzepts.
 - **Norm-Zahlen final absichern** – die Werte in `Regelwerk.kt` sind
   konservative Richtwerte mit Quellenangabe; wo Haftung berührt ist, gehören
   sie fachlich/normativ geprüft (Konzept §8, §14).

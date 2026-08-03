@@ -68,6 +68,11 @@ export function bericht(projekt, variante, befunde, svgMarkup, svgGroesse) {
   .b-warnung td { color: #a4262c; }
   .quelle { font-size: 11px; color: #6a7a7a; }
   .hinweis { background: #f3f8f8; border-left: 4px solid #2b7a78; padding: 10px 14px; font-size: 12.5px; margin-top: 10px; border-radius: 0 6px 6px 0; }
+  .galerie { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 6px; }
+  .foto { margin: 0; border: 1px solid #dde6e6; border-radius: 8px; overflow: hidden; background: #fff; break-inside: avoid; }
+  .foto img { width: 100%; height: 150px; object-fit: cover; display: block; background: #111; }
+  .foto figcaption { padding: 6px 8px; font-size: 12px; }
+  .foto figcaption span { color: #6a7a7a; font-size: 11px; }
   .fuss { margin-top: 26px; border-top: 1px solid #dde6e6; padding-top: 8px; font-size: 11px; color: #8a9a9a; display: flex; justify-content: space-between; }
   @media print { body { margin: 0; } .kein-druck { display: none; } }
   .knopf { position: fixed; top: 16px; right: 16px; background: #2b7a78; color: #fff; border: 0; padding: 10px 18px; border-radius: 8px; font-size: 14px; cursor: pointer; }
@@ -111,6 +116,10 @@ Foto-Rekonstruktion sind Kontextmaße (± cm); laser- oder kataloggesicherte Ma�
 
 <h2>Geplante Geräte</h2>
 <table><tr><th>Bezeichnung</th><th>Baumaß (B×T×H)</th></tr>${klotzZeilen || `<tr><td colspan="2">keine</td></tr>`}</table>
+
+${(projekt.fotos && projekt.fotos.length) ? `<h2>Verortete Fotos</h2>
+<div class="galerie">${projekt.fotos.map((f, i) => `
+  <figure class="foto"><img src="${f.datenUrl}" alt=""><figcaption>${i + 1}. ${esc(f.titel || "Foto")}${f.notiz ? `<br><span>${esc(f.notiz)}</span>` : ""}</figcaption></figure>`).join("")}</div>` : ""}
 
 <div class="fuss"><span>RAUMWERK · Konzept-Prototyp · Vertraulich</span><span>Kein Rechts- oder Prüfnachweis – Richtwerte, fachlich abzusichern.</span></div>
 </body></html>`;

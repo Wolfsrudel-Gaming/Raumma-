@@ -28,7 +28,7 @@ export class Plan {
   constructor(svg, rueckrufe = {}) {
     this.svg = svg;
     this.cb = rueckrufe;
-    this.modell = { raum: null, oeffnungen: [], einbauten: [], platzhalter: [], befunde: [], auswahl: null };
+    this.modell = { raum: null, oeffnungen: [], einbauten: [], platzhalter: [], fotos: [], befunde: [], auswahl: null };
     this.modus = "auswahl";
     this.scale = 120;           // Bildpunkte je Meter
     this.ox = 40; this.oy = 40; // Ursprung des Raums auf dem Schirm
@@ -78,6 +78,7 @@ export class Plan {
     teile.push(this._einbauten(raum));
     for (const ph of this.modell.platzhalter) teile.push(this._klotz(ph));
     teile.push(this._wandnummern(raum));
+    teile.push(this._fotos(raum));
     teile.push(this._messung());
     this.svg.innerHTML = teile.join("");
   }
@@ -194,6 +195,23 @@ export class Plan {
     return `<g class="wandnummern">${g.join("")}</g>`;
   }
 
+  _fotos(raum) {
+    const b = G.breite(raum) || 1, t = G.tiefe(raum) || 1;
+    const g = [];
+    this.modell.fotos.forEach((f, i) => {
+      const [x, y] = this.nachSchirm(Number(f.relX) * b, Number(f.relY) * t);
+      // Tropfen-Pin mit Kamera-Glyph; die Nummer verweist auf die Liste links.
+      g.push(`<g class="foto-pin" data-foto="${f.id}" transform="translate(${x} ${y})">
+        <path class="pin-koerper" d="M0 4 C -10 -6 -9 -18 0 -18 C 9 -18 10 -6 0 4 Z"/>
+        <circle class="pin-loch" cx="0" cy="-12" r="6.5"/>
+        <path class="pin-cam" d="M-4 -14 h1.4 l0.8 -1.2 h3.6 l0.8 1.2 H4 v5 H-4 Z" />
+        <circle class="pin-cam-l" cx="0" cy="-11.2" r="1.9"/>
+        <text class="pin-nr" x="13" y="-9">${i + 1}</text>
+      </g>`);
+    });
+    return `<g class="fotos">${g.join("")}</g>`;
+  }
+
   _messung() {
     if (!this.messpunkte.length) return "";
     const s = this.messpunkte.map(p => this.nachSchirm(p[0], p[1]));
@@ -232,9 +250,15 @@ export class Plan {
       return;
     }
 
+    const zielFoto = ev.target.closest?.("[data-foto]");
     const zielPh = ev.target.closest?.("[data-ph]");
     const zielEin = ev.target.closest?.("[data-ein]");
-    if (zielPh) {
+    if (zielFoto) {
+      const id = zielFoto.getAttribute("data-foto");
+      const f = this.modell.fotos.find(x => x.id === id);
+      this.zieh = { typ: "foto", f, start: [ev.clientX, ev.clientY], bewegt: false };
+      this.svg.setPointerCapture?.(ev.pointerId);
+    } else if (zielPh) {
       const id = zielPh.getAttribute("data-ph");
       const ph = this.modell.platzhalter.find(p => p.id === id);
       this.cb.onSelect?.(id);
@@ -266,10 +290,24 @@ export class Plan {
     } else if (this.zieh.typ === "einbau") {
       const welt = this._zeigerWelt(ev);
       this.cb.onEinbauMove?.(this.zieh.e.id, this._einrastEinbau(this.zieh.e, welt[0], welt[1]));
+    } else if (this.zieh.typ === "foto") {
+      if (Math.hypot(ev.clientX - this.zieh.start[0], ev.clientY - this.zieh.start[1]) > 4) {
+        this.zieh.bewegt = true;
+        const raum = this.modell.raum;
+        const welt = this._zeigerWelt(ev);
+        this.cb.onFotoMove?.(this.zieh.f.id, {
+          relX: klemm01(welt[0] / (G.breite(raum) || 1)),
+          relY: klemm01(welt[1] / (G.tiefe(raum) || 1))
+        });
+      }
     }
   }
 
-  _hoch() { this.zieh = null; }
+  _hoch() {
+    // Ein Foto-Pin ohne Bewegung war ein Klick: das echte Foto zeigen.
+    if (this.zieh?.typ === "foto" && !this.zieh.bewegt) this.cb.onFotoOeffnen?.(this.zieh.f.id);
+    this.zieh = null;
+  }
 
   _rad(ev) {
     ev.preventDefault();

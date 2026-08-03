@@ -48,6 +48,12 @@
         <p class="hint">Vorhandene Elektro-Installation dokumentieren – Art antippen, in den Plan setzen. Höhen nach Norm.</p>
         <div id="panelEinbauPalette" class="chips"></div>
       </section>
+      <section class="block" id="blockFotos">
+        <h2>Fotos (verortet)</h2>
+        <p class="hint">Bild hinzufügen, Pin an die Stelle im Plan ziehen. Klick auf einen Pin zeigt das echte Foto (Typenschild, Klemmen …).</p>
+        <div id="panelFotos"></div>
+        <input id="fileFoto" type="file" accept="image/*" multiple hidden>
+      </section>
     </aside>
 
     <!-- Mitte: Grundriss -->
@@ -79,6 +85,15 @@
       </section>
     </aside>
   </main>
+
+  <!-- Lightbox für verortete Fotos -->
+  <div id="lightbox" class="lightbox" hidden>
+    <div class="lb-inhalt">
+      <button class="lb-zu" id="lbZu" title="Schließen">✕</button>
+      <img id="lbBild" alt="Vor-Ort-Foto">
+      <div class="lb-text"><b id="lbTitel"></b><span id="lbNotiz"></span></div>
+    </div>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>

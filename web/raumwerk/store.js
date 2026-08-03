@@ -21,6 +21,23 @@ export function neueId(praefix = "id") {
   return `${praefix}-${Date.now().toString(36)}-${(id++).toString(36)}`;
 }
 
+/**
+ * Ein Beispiel-„Typenschild" als eingebettetes SVG – steht für ein echtes
+ * Vor-Ort-Foto, damit die Foto-Funktion ohne Datei sofort sichtbar ist.
+ */
+const BEISPIEL_FOTO = "data:image/svg+xml," + encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='380' height='240'>
+    <rect width='380' height='240' fill='#1c2b30'/>
+    <rect x='22' y='22' width='336' height='196' rx='8' fill='#c9ccce' stroke='#6b7378' stroke-width='3'/>
+    <text x='40' y='58' font-family='sans-serif' font-size='19' font-weight='700' fill='#20303a'>TYPENSCHILD (Beispiel)</text>
+    <line x1='40' y1='70' x2='340' y2='70' stroke='#8a9296' stroke-width='2'/>
+    <text x='40' y='100' font-family='sans-serif' font-size='15' fill='#2a3a40'>Hersteller: Muster-Elektro GmbH</text>
+    <text x='40' y='126' font-family='sans-serif' font-size='15' fill='#2a3a40'>Typ: UV-3R · Verteiler 3-reihig</text>
+    <text x='40' y='152' font-family='sans-serif' font-size='15' fill='#2a3a40'>Nennstrom: In 63 A · 400/230 V</text>
+    <text x='40' y='178' font-family='sans-serif' font-size='15' fill='#2a3a40'>Schutzart: IP44 · Baujahr 2019</text>
+    <text x='40' y='202' font-family='sans-serif' font-size='12' fill='#5a6a70'>(Platzhalter – vor Ort das echte Foto)</text>
+  </svg>`);
+
 /** Ein frisches Beispielprojekt: ein Technikraum, an dem sich alles zeigt. */
 export function beispielProjekt() {
   const raumId = neueId("raum");
@@ -41,6 +58,10 @@ export function beispielProjekt() {
         relX: 0.5, relY: 0.5, hoeheM: 2.5 },
       { id: neueId("ein"), raumId, art: "SCHALTER", befestigung: "WAND",
         wandIndex: 0, abstandM: 2.6, hoeheM: 1.05 }
+    ],
+    fotos: [
+      { id: neueId("foto"), raumId, relX: 0.28, relY: 0.9, titel: "Zählerschrank – Typenschild",
+        datenUrl: BEISPIEL_FOTO, notiz: "Zählernummer und Nennstrom ablesbar." }
     ],
     varianten: [
       { id: neueId("var"), name: "Variante A", platzhalter: [
@@ -63,11 +84,18 @@ export function laden() {
   return beispielProjekt();
 }
 
-/** Speichert das Projekt. Wird nach jeder Änderung aufgerufen. */
+/**
+ * Speichert das Projekt. Gibt `false` zurück, wenn der Speicher voll ist
+ * (z. B. zu viele Fotos) – dann bleibt der Stand im RAM, und die App weist auf
+ * den Export hin.
+ */
 export function speichern(projekt) {
   try {
     localStorage.setItem(SCHLUESSEL, JSON.stringify(projekt));
-  } catch (_) { /* Speicher voll o. Ä. – der Zustand bleibt im RAM erhalten */ }
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 /** Übernimmt ein eingelesenes Projekt (Import) und füllt fehlende Felder auf. */
@@ -78,6 +106,7 @@ function migriere(p) {
   if (!p.raum) return beispielProjekt();
   p.oeffnungen ??= [];
   p.einbauten ??= [];
+  p.fotos ??= [];
   p.varianten ??= [{ id: neueId("var"), name: "Variante A", platzhalter: [] }];
   p.aktiveVariante ??= 0;
   if (p.aktiveVariante >= p.varianten.length) p.aktiveVariante = 0;

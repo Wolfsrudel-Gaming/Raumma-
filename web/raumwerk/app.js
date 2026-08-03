@@ -28,7 +28,10 @@ let modus = "auswahl";     // auswahl | platzieren | messen-strecke | messen-fla
 let befunde = [];
 
 const svg = $("plan");
-const plan = new Plan(svg, { onSelect, onPlatzhalterMove, onPlace, onMessung, onEinbauSelect, onEinbauMove });
+const plan = new Plan(svg, {
+  onSelect, onPlatzhalterMove, onPlace, onMessung, onEinbauSelect, onEinbauMove,
+  onFotoMove, onFotoOeffnen
+});
 
 // ------------------------------------------------------------- Kern
 
@@ -48,19 +51,21 @@ function render() {
   pruefenJetzt();
   plan.setModell({
     raum: raum(), oeffnungen: projekt.oeffnungen, einbauten: projekt.einbauten,
-    platzhalter: platzhalter(), befunde, auswahl
+    platzhalter: platzhalter(), fotos: projekt.fotos, befunde, auswahl
   }).zeichne();
   renderKopf();
   renderRaum();
   renderOeffnungen();
   renderPalette();
   renderEinbauPalette();
+  renderFotos();
   renderWerkzeuge();
   renderPruefung();
   renderInspektor();
   renderVarianten();
   renderStatus();
-  Store.speichern(projekt);
+  const gespeichert = Store.speichern(projekt);
+  if (!gespeichert) $("statusZeile").textContent = "Speicher voll (viele Fotos?) – Stand per Export sichern.";
 }
 
 // ------------------------------------------------------- Rückrufe Plan
@@ -121,6 +126,87 @@ function onMessung(e) {
     ? `Strecke: mind. ${e.laengeM.toFixed(2)} m`
     : `Fläche: ${e.flaecheM2.toFixed(2)} m² · Umfang ${e.umfangM.toFixed(2)} m (${e.punkte} Punkte)`;
 }
+
+function onFotoMove(id, patch) {
+  const f = projekt.fotos.find(x => x.id === id);
+  if (f) { Object.assign(f, patch); render(); }
+}
+
+function onFotoOeffnen(id) {
+  const f = projekt.fotos.find(x => x.id === id);
+  if (f) lightboxZeigen(f);
+}
+
+// -------------------------------------------------------- Fotos
+
+function renderFotos() {
+  const panel = $("panelFotos");
+  panel.innerHTML = projekt.fotos.map((f, i) => `
+    <div class="foto-zeile" data-foto="${f.id}">
+      <img class="foto-mini" src="${f.datenUrl}" alt="">
+      <div class="foto-mitte">
+        <span class="foto-nr">${i + 1}</span>
+        <input class="foto-titel" value="${esc(f.titel || "")}" placeholder="Titel">
+      </div>
+      <button class="foto-auf" title="Groß anzeigen">ansehen</button>
+      <button class="weg" title="Foto entfernen">✕</button>
+    </div>`).join("") || `<p class="leer">Noch keine Fotos.</p>`;
+  panel.insertAdjacentHTML("beforeend", `<button class="klein-knopf" id="fotoPlus">+ Foto hinzufügen</button>`);
+
+  projekt.fotos.forEach(f => {
+    const z = panel.querySelector(`[data-foto="${f.id}"]`);
+    if (!z) return;
+    z.querySelector(".foto-mini").onclick = () => lightboxZeigen(f);
+    z.querySelector(".foto-auf").onclick = () => lightboxZeigen(f);
+    z.querySelector(".foto-titel").addEventListener("change", e => { f.titel = e.target.value; render(); });
+    z.querySelector(".weg").onclick = () => { projekt.fotos = projekt.fotos.filter(x => x.id !== f.id); render(); };
+  });
+  $("fotoPlus").onclick = () => $("fileFoto").click();
+}
+
+async function fotosHinzufuegen(dateien) {
+  for (const datei of dateien) {
+    try {
+      const url = await bildSkaliert(datei);
+      projekt.fotos.push({
+        id: Store.neueId("foto"), raumId: raum().id, relX: 0.5, relY: 0.5,
+        titel: datei.name.replace(/\.[^.]+$/, ""), datenUrl: url, notiz: ""
+      });
+    } catch (_) { /* eine kaputte Datei überspringt den Rest nicht */ }
+  }
+  render();
+}
+
+/** Bild einlesen und verkleinern – hält den localStorage-Speicher klein. */
+function bildSkaliert(datei, maxKante = 1280, qualitaet = 0.75) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, maxKante / Math.max(img.width, img.height));
+        const w = Math.round(img.width * s), h = Math.round(img.height * s);
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        res(c.toDataURL("image/jpeg", qualitaet));
+      };
+      img.onerror = rej;
+      img.src = fr.result;
+    };
+    fr.onerror = rej;
+    fr.readAsDataURL(datei);
+  });
+}
+
+function lightboxZeigen(f) {
+  $("lbBild").src = f.datenUrl;
+  $("lbTitel").textContent = f.titel || "Foto";
+  $("lbNotiz").textContent = f.notiz || "";
+  $("lightbox").hidden = false;
+}
+
+function lightboxSchliessen() { $("lightbox").hidden = true; $("lbBild").src = ""; }
 
 // ---------------------------------------------------------- Kopfleiste
 
@@ -459,6 +545,9 @@ function verdrahteKopf() {
   $("btnExport").onclick = exportJson;
   $("btnImport").onclick = () => $("fileImport").click();
   $("fileImport").onchange = e => importJson(e.target.files[0]);
+  $("fileFoto").onchange = e => { fotosHinzufuegen([...e.target.files]); e.target.value = ""; };
+  $("lbZu").onclick = lightboxSchliessen;
+  $("lightbox").onclick = e => { if (e.target.id === "lightbox") lightboxSchliessen(); };
 }
 
 /** Projekt als JSON sichern – zum Teilen oder als Backup (kundenlink-tauglich). */
@@ -491,6 +580,7 @@ function importJson(datei) {
 // -------------------------------------------------------- Tastatur
 
 window.addEventListener("keydown", e => {
+  if (!$("lightbox").hidden && e.key === "Escape") { lightboxSchliessen(); return; }
   if (e.target.matches("input, select, textarea")) return;
   const ph = gewaehltPlatzhalter();
   const ein = gewaehltEinbau();
