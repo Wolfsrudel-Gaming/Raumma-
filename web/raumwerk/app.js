@@ -31,6 +31,11 @@ let ansicht = "raum";      // raum | gebaeude | 3d
 let befunde = [];
 let modell3d = null;       // three.js-Modell, erst beim Öffnen der 3D-Ansicht geladen
 let modus3d = "drehen";    // drehen | verschieben | begehen
+let wolke3d = null;        // Punktwolken-Viewer (Pipeline-Ergebnis)
+let wolkeGeladen = false;
+let wolkeInfo = null;
+let pipelineUrl = localStorage.getItem("raumwerk.pipeline") || "http://localhost:8781";
+let pipelineJobs = [];
 
 const svg = $("plan");
 const svgGeb = $("gebaeude");
@@ -80,6 +85,7 @@ function render() {
   renderPalette();
   renderEinbauPalette();
   renderFotos();
+  renderPipeline();
   renderWerkzeuge();
   renderPruefung();
   renderInspektor();
@@ -249,11 +255,14 @@ function setAnsicht(a) {
   svg.toggleAttribute("hidden", a !== "raum");
   svgGeb.toggleAttribute("hidden", a !== "gebaeude");
   $("modell3d").toggleAttribute("hidden", a !== "3d");
-  // 3D beim Verlassen abbauen: die Grafik rechnet sonst im Hintergrund weiter
-  // und zieht Akku (Hinweis aus EINBAU.md).
+  $("wolke3d").toggleAttribute("hidden", a !== "wolke");
+  // 3D beim Verlassen abbauen, Wolke pausieren: die Grafik rechnet sonst im
+  // Hintergrund weiter und zieht Akku (Hinweis aus EINBAU.md).
   if (vorher === "3d" && a !== "3d" && modell3d) { modell3d.dispose(); modell3d = null; }
+  if (vorher === "wolke" && a !== "wolke" && wolke3d) wolke3d.pause();
   render();
   if (a === "3d") requestAnimationFrame(dreiDStarten);
+  else if (a === "wolke") requestAnimationFrame(() => { if (wolke3d) { wolke3d.weiter(); wolke3d.resize(); } });
   else requestAnimationFrame(() => (a === "raum" ? plan.einpassen() : gebaeude.einpassen()));
 }
 
@@ -303,6 +312,74 @@ function on3dSnap(modelRaum, nx, ny) {
   return echt ? einrasten(echt, nx, ny, raeume()) : [nx, ny];
 }
 
+// -------------------------------------------------- Pipeline / Wolke
+
+function renderPipeline() {
+  const panel = $("panelPipeline");
+  panel.innerHTML = `
+    <div class="feld"><label>Server-URL</label><input id="pipUrl" value="${esc(pipelineUrl)}"></div>
+    <div class="feld-reihe">
+      <button class="klein-knopf" id="pipLaden">Aufträge laden</button>
+      <button class="klein-knopf" id="pipDatei">PLY-Datei…</button>
+    </div>
+    <div id="pipListe">${pipelineJobs.length ? pipelineJobs.map(j => `
+      <div class="pip-job">
+        <span class="pip-name">${esc(j.name)}</span>
+        <span class="pip-status ${j.status}">${esc(j.status)}</span>
+        ${j.status === "fertig" ? `<button class="mini" data-wolke="${j.id}">Wolke</button>` : ""}
+      </div>`).join("") : `<p class="leer">Aufträge laden oder eine PLY-Datei öffnen.</p>`}</div>
+    ${wolkeInfo ? `<div class="pip-info">
+      ${wolkeInfo.punkte ?? "?"} Punkte · Spanne ${wolkeInfo.spanne_m ?? "?"} m
+      ${wolkeInfo.skala != null ? `<br>Maßstab ${wolkeInfo.skala} m/Einheit` : ""}
+      ${wolkeInfo.qa != null ? ` · Kontrollmaß ±${wolkeInfo.qa} mm` : ""}
+    </div>` : ""}`;
+  bind("pipUrl", "change", v => { pipelineUrl = v.replace(/\/+$/, ""); localStorage.setItem("raumwerk.pipeline", pipelineUrl); });
+  $("pipLaden").onclick = pipelineAuftraege;
+  $("pipDatei").onclick = () => $("fileWolke").click();
+  panel.querySelectorAll("[data-wolke]").forEach(b => b.onclick = () => pipelineWolke(b.getAttribute("data-wolke")));
+}
+
+async function pipelineAuftraege() {
+  try {
+    const r = await fetch(`${pipelineUrl}/jobs`);
+    pipelineJobs = await r.json();
+    renderPipeline();
+  } catch (_) {
+    alert(`Pipeline nicht erreichbar unter ${pipelineUrl}. Läuft der Server?`);
+  }
+}
+
+async function pipelineWolke(id) {
+  try {
+    const [res, ply] = await Promise.all([
+      fetch(`${pipelineUrl}/jobs/${id}/result`).then(r => r.json()),
+      fetch(`${pipelineUrl}/jobs/${id}/wolke.ply`).then(r => r.text()),
+    ]);
+    const mass = res?.massstab || {};
+    await wolkeAusText(ply, { skala: mass.skala_m_je_einheit, qa: mass.kontrollmass_abweichung_mm });
+  } catch (_) {
+    alert("Die Punktwolke konnte nicht geladen werden.");
+  }
+}
+
+/** Eine PLY (aus der Pipeline oder als Datei) in den Wolke-Viewer bringen. */
+async function wolkeAusText(plyText, info = {}) {
+  const container = $("wolke3d");
+  if (!wolke3d) {
+    try {
+      const mod = await import("./wolke3d.js");
+      wolke3d = new mod.Wolke(container);
+    } catch (_) {
+      container.innerHTML = `<div class="dreid-fehler">Punktwolken-Viewer nicht ladbar (three.js fehlt).</div>`;
+      return;
+    }
+  }
+  const stat = wolke3d.laden(plyText);
+  wolkeInfo = { ...info, ...stat };
+  wolkeGeladen = true;
+  setAnsicht("wolke");
+}
+
 /** Neuen Raum an den aktiven anlegen – „liegt rechts/hinter …" ohne Fingerschieben. */
 function raumAnlegen(seite) {
   const basis = raum();
@@ -341,6 +418,7 @@ function renderRaeume() {
       <button class="werkzeug ${ansicht === "raum" ? "aktiv" : ""}" data-ansicht="raum">Rauminnen</button>
       <button class="werkzeug ${ansicht === "gebaeude" ? "aktiv" : ""}" data-ansicht="gebaeude">Gebäude</button>
       <button class="werkzeug ${ansicht === "3d" ? "aktiv" : ""}" data-ansicht="3d">3D</button>
+      <button class="werkzeug ${ansicht === "wolke" ? "aktiv" : ""}" data-ansicht="wolke" ${wolkeGeladen ? "" : "disabled"} title="${wolkeGeladen ? "" : "Erst unten eine Wolke laden"}">Wolke</button>
     </div>
     ${geschosse.length > 1 ? `<div class="feld"><label>Geschoss</label><div class="chips">
       ${geschosse.map(n => `<button class="chip ${n === g ? "aktiv" : ""}" data-geschoss="${n}">${geschossName(n)}</button>`).join("")}
@@ -567,6 +645,7 @@ function renderWerkzeuge() {
       b.onclick = () => { modus3d = b.getAttribute("data-modus3d"); modell3d?.setMode(modus3d); renderWerkzeuge(); renderStatus(); });
     return;
   }
+  if (ansicht !== "raum") { panel.innerHTML = ""; return; }   // Gebäude/Wolke: keine Raum-Werkzeuge
   const wz = [["auswahl", "Auswahl"], ["messen-strecke", "Messen ↔"], ["messen-flaeche", "Fläche ▱"]];
   panel.innerHTML = wz.map(([m, t]) =>
     `<button class="werkzeug ${modus === m ? "aktiv" : ""}" data-modus="${m}">${t}</button>`).join("");
@@ -604,6 +683,12 @@ function renderStatus() {
       verschieben: "Räume im Modell schieben – Kanten rasten ein",
       begehen: "Begehen: WASD / Pfeiltasten laufen, ziehen schaut um"
     }[modus3d] || "";
+    return;
+  }
+  if (ansicht === "wolke") {
+    const i = wolkeInfo || {};
+    $("statusZeile").textContent = `Punktwolke aus der Pipeline · ${i.punkte ?? "?"} Punkte`
+      + (i.skala != null ? ` · Maßstab ${i.skala} m/Einheit` : "") + " · ziehen dreht, Rad zoomt";
     return;
   }
   const wasName = einbauWahl ? Normmasse.ARTEN.get(einbauWahl) : finde(paletteWahl)?.name ?? "";
@@ -747,12 +832,18 @@ function verdrahteKopf() {
   $("btnEinpassen").onclick = () => {
     if (ansicht === "raum") plan.einpassen();
     else if (ansicht === "gebaeude") gebaeude.einpassen();
-    else modell3d?.resize();
+    else if (ansicht === "3d") modell3d?.resize();
+    else wolke3d?.resize();
   };
   $("btnExport").onclick = exportJson;
   $("btnImport").onclick = () => $("fileImport").click();
   $("fileImport").onchange = e => importJson(e.target.files[0]);
   $("fileFoto").onchange = e => { fotosHinzufuegen([...e.target.files]); e.target.value = ""; };
+  $("fileWolke").onchange = e => {
+    const f = e.target.files[0];
+    if (f) f.text().then(t => wolkeAusText(t, { quelle: f.name }));
+    e.target.value = "";
+  };
   $("lbZu").onclick = lightboxSchliessen;
   $("lightbox").onclick = e => { if (e.target.id === "lightbox") lightboxSchliessen(); };
 }
@@ -804,7 +895,8 @@ window.addEventListener("keydown", e => {
 window.addEventListener("resize", () => {
   if (ansicht === "raum") plan.zeichne();
   else if (ansicht === "gebaeude") gebaeude.zeichne();
-  else modell3d?.resize();
+  else if (ansicht === "3d") modell3d?.resize();
+  else wolke3d?.resize();
 });
 
 // ------------------------------------------------------- Hilfsfunktionen

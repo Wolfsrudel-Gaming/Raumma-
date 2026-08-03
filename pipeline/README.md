@@ -74,17 +74,30 @@ Worker und optional ein Nacht-Zeitfenster.
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| `POST` | `/jobs` | Auftrag anlegen (JSON: `name`, `laser[]`, `tags[]`) |
+| `POST` | `/jobs` | Auftrag anlegen (JSON: `name`, `laser[]`, `tags[]`, `auto?`) |
+| `POST` | `/jobs/<id>/bild?name=…` | ein Bild hochladen (rohe Bytes) |
+| `POST` | `/jobs/<id>/start` | Verarbeitung anstoßen (nach dem Upload) |
 | `GET` | `/jobs` | alle Aufträge |
 | `GET` | `/jobs/<id>` | Status + Ergebnis eines Auftrags |
 | `GET` | `/jobs/<id>/result` | Ergebnis-Manifest |
+| `GET` | `/jobs/<id>/bilder` | Liste der hochgeladenen Bilder |
+| `GET` | `/jobs/<id>/wolke.ply` | die Punktwolke (für den Betrachter) |
 | `GET` | `/healthz` | Bereitschaft + erkannte Werkzeuge |
 | `GET` | `/` | kleine Statusseite |
 
+Alle Antworten tragen CORS-Header, damit der Browser-Viewer (andere Herkunft)
+das Ergebnis laden kann.
+
 ```bash
+# Variante A: alles in einem Aufruf (Metadaten + Lasermaße, sofort rechnen)
 curl -X POST localhost:8781/jobs -H 'Content-Type: application/json' \
      -d @beispiel-auftrag.json
-curl localhost:8781/jobs/<id>
+
+# Variante B: erst anlegen, Bilder hochladen, dann starten
+ID=$(curl -s -X POST localhost:8781/jobs -d '{"name":"…","auto":false,"laser":[…]}' | ...)
+curl -X POST "localhost:8781/jobs/$ID/bild?name=IMG_001.jpg" --data-binary @IMG_001.jpg
+curl -X POST "localhost:8781/jobs/$ID/start"
+curl localhost:8781/jobs/$ID
 ```
 
 ---
@@ -111,7 +124,5 @@ Einstellbar per Umgebungsvariable: `RAUMWERK_DATEN`, `RAUMWERK_MAX_CPUS`,
 - Echte Anbindung von COLMAP/OpenMVS (Kommandos stehen, Auslesen der Modell-
   Distanzen an den Ankerpunkten ist projektspezifisch).
 - Registrierung mehrerer Räume/Wolken (CloudCompare) und Mehrraum-Ausrichtung.
-- Übergabe des Ergebnisses an den Browser-Viewer (Punktwolke → Potree,
-  Maßstab → Planungsschicht).
-- Upload der Bilddateien (heute nimmt die API Metadaten + Lasermaße; der
-  Bild-Upload ist der nächste Schritt).
+- Dichter Betrachter im Browser (heute lädt die App die Wolke in einen
+  leichten three.js-Viewer; für große Wolken wäre Potree der nächste Schritt).

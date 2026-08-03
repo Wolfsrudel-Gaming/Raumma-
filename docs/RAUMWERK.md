@@ -80,6 +80,11 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
   umschauen, Räume im Raum schieben, in Augenhöhe hindurchgehen. three.js liegt
   lokal unter `web/lib/` (MIT) und wird erst beim Öffnen der Ansicht geladen;
   beim Verlassen wird das Modell abgebaut, damit es keinen Akku zieht.
+- **Pipeline-Ergebnis laden** – Verbindung zur Verarbeitungs-Pipeline
+  (Schicht ②): fertige Aufträge auflisten und die **metrische Punktwolke** im
+  Browser (three.js, `wolke3d.js`) anzeigen – samt Maßstab und Kontrollmaß aus
+  dem Manifest. Alternativ eine PLY-Datei öffnen. Das schließt den Kreis von
+  der Server-Verarbeitung zurück in den Betrachter.
 - **PDF-Report** – die gewählte Variante als druckbares Dokument, inklusive
   Maß-Herkunft und konservativer Rundungsregel.
 
@@ -98,6 +103,9 @@ bibliothek, keine Fremd-Deps) für die Photogrammetrie-Verarbeitung:
   sodass alles ohne die schweren Binaries end-to-end durchläuft.
 - Der **Maß-Solver** ist echt gerechnet (Laser-Constraints → Maßstab,
   Kontrollmaß → Genauigkeitszahl §7, konservative Rundung wie im Kern).
+- **Bild-Upload** (`POST /jobs/<id>/bild`) und **Ergebnis-Auslieferung**
+  (`/jobs/<id>/result`, `/jobs/<id>/wolke.ply`, mit CORS) – der Betrachter lädt
+  das Ergebnis direkt.
 - **Docker** mit CPU-/RAM-Limits (cgroups), HTTP-API, Tests.
 
 ```

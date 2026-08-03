@@ -58,6 +58,12 @@
         <div id="panelFotos"></div>
         <input id="fileFoto" type="file" accept="image/*" multiple hidden>
       </section>
+      <section class="block" id="blockPipeline">
+        <h2>Pipeline (Schicht ②)</h2>
+        <p class="hint">Ergebnis der Server-Verarbeitung laden: metrische Punktwolke und Maßstab.</p>
+        <div id="panelPipeline"></div>
+        <input id="fileWolke" type="file" accept=".ply" hidden>
+      </section>
     </aside>
 
     <!-- Mitte: Grundriss -->
@@ -72,6 +78,7 @@
       <svg id="plan" class="plan"></svg>
       <svg id="gebaeude" class="plan" hidden></svg>
       <div id="modell3d" class="modell3d" hidden></div>
+      <div id="wolke3d" class="modell3d" hidden></div>
       <div class="plan-fuss" id="statusZeile"></div>
     </section>
 

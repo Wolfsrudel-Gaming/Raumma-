@@ -51,6 +51,16 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(fertig.ergebnis["semantik"]["befunde"], 1)
             self.assertEqual(fertig.ergebnis["modus"], "simulation")
 
+    def test_hochgeladene_bilder_werden_gezaehlt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _cfg(tmp)
+            store = JobStore(cfg)
+            job = store.neu("Mit Bildern", DEMO_EINGABE)
+            (store.bilder_dir(job.id) / "a.jpg").write_bytes(b"x")
+            (store.bilder_dir(job.id) / "b.jpg").write_bytes(b"y")
+            run_job(job, store, cfg)
+            self.assertEqual(store.laden(job.id).ergebnis["sfm"]["bilder"], 2)
+
     def test_fehlende_laser_setzen_job_auf_fehler(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _cfg(tmp)

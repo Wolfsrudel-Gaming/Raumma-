@@ -41,6 +41,8 @@ def stage_sfm(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     """Kameraposen und spärliche Wolke. Real: COLMAP im CPU-Modus."""
     sparse = jobdir / "sparse"
     sparse.mkdir(exist_ok=True)
+    bilder_dir = jobdir / "bilder"
+    n_bilder = sum(1 for p in bilder_dir.iterdir() if p.is_file()) if bilder_dir.exists() else 0
     if not simuliert(cfg):
         for kmd in tools.colmap_kommandos(str(jobdir / "bilder"), str(jobdir)):
             lauf = tools.ausfuehren(kmd, cfg, cwd=str(jobdir))
@@ -54,7 +56,7 @@ def stage_sfm(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
             json.dumps({"kameras": 24, "hinweis": "Simulation – keine echte SfM"}),
             encoding="utf-8")
         ctx["anker"] = _anker_aus_laser(job, rauschen=0.006, seed=job.id)
-    return {"sfm": {"kameras": 24}}
+    return {"sfm": {"kameras": 24, "bilder": n_bilder}}
 
 
 # -------------------------------------------------- Stufe 2: Dichte Wolke

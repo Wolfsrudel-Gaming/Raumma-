@@ -5,12 +5,19 @@ Schmal gehalten und ohne Framework (nur Standardbibliothek), passend zu „läuf
 auf vorhandener Infrastruktur, stört andere Dienste nicht". Aufnahme-App und
 Betrachter sprechen hierüber mit dem Server:
 
-    POST /jobs            Auftrag anlegen (JSON: name, laser[], tags[])
-    GET  /jobs            alle Aufträge
-    GET  /jobs/<id>       ein Auftrag mit Status/Ergebnis
+    POST /jobs               Auftrag anlegen (JSON: name, laser[], tags[], auto?)
+    POST /jobs/<id>/bild     ein Bild hochladen (roh, ?name=…)
+    POST /jobs/<id>/start    Verarbeitung anstoßen (nach dem Bild-Upload)
+    GET  /jobs               alle Aufträge
+    GET  /jobs/<id>          ein Auftrag mit Status/Ergebnis
     GET  /jobs/<id>/result   das Ergebnis-Manifest (result.json)
-    GET  /healthz         Bereitschaft + erkannte Werkzeuge
-    GET  /                kleine Statusseite
+    GET  /jobs/<id>/bilder   Liste der hochgeladenen Bilder
+    GET  /jobs/<id>/wolke.ply  die Punktwolke (für den Betrachter)
+    GET  /healthz            Bereitschaft + erkannte Werkzeuge
+    GET  /                   kleine Statusseite
+
+Alle Antworten tragen CORS-Header, damit der Browser-Viewer (andere Herkunft)
+das Ergebnis laden kann.
 """
 
 from __future__ import annotations
@@ -45,21 +52,30 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------- Antworten
 
-    def _json(self, code: int, obj) -> None:
-        roh = json.dumps(obj, indent=2, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(roh)))
-        self.end_headers()
-        self.wfile.write(roh)
+    def _cors(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
-    def _text(self, code: int, text: str, typ: str = "text/html; charset=utf-8") -> None:
-        roh = text.encode("utf-8")
+    def _bytes(self, code: int, roh: bytes, typ: str) -> None:
         self.send_response(code)
         self.send_header("Content-Type", typ)
         self.send_header("Content-Length", str(len(roh)))
+        self._cors()
         self.end_headers()
         self.wfile.write(roh)
+
+    def _json(self, code: int, obj) -> None:
+        self._bytes(code, json.dumps(obj, indent=2, ensure_ascii=False).encode("utf-8"),
+                    "application/json; charset=utf-8")
+
+    def _text(self, code: int, text: str, typ: str = "text/html; charset=utf-8") -> None:
+        self._bytes(code, text.encode("utf-8"), typ)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.end_headers()
 
     @property
     def kontext(self):
@@ -89,8 +105,16 @@ class _Handler(BaseHTTPRequestHandler):
             job = store.laden(teile[2])
             if not job:
                 return self._json(404, {"fehler": "Auftrag nicht gefunden"})
-            if len(teile) >= 4 and teile[3] == "result":
+            unter = teile[3] if len(teile) >= 4 else None
+            if unter == "result":
                 return self._json(200, job.ergebnis)
+            if unter == "bilder":
+                return self._json(200, store.bilder(job.id))
+            if unter == "wolke.ply":
+                pfad = store.dir(job.id) / "wolke.ply"
+                if not pfad.exists():
+                    return self._json(404, {"fehler": "keine Wolke"})
+                return self._bytes(200, pfad.read_bytes(), "text/plain; charset=utf-8")
             return self._json(200, job.dict())
         return self._json(404, {"fehler": "unbekannter Pfad"})
 
@@ -99,21 +123,43 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         store: JobStore = self.kontext["store"]
         worker: Worker = self.kontext["worker"]
-        if self.path.rstrip("/") != "/jobs":
-            return self._json(404, {"fehler": "unbekannter Pfad"})
-        try:
-            laenge = int(self.headers.get("Content-Length", 0))
-            daten = json.loads(self.rfile.read(laenge) or b"{}")
-        except (ValueError, json.JSONDecodeError):
-            return self._json(400, {"fehler": "ungültiges JSON"})
+        pfad = self.path.split("?")[0].rstrip("/")
+        laenge = int(self.headers.get("Content-Length", 0))
 
-        eingabe = {
-            "laser": daten.get("laser", []),
-            "tags": daten.get("tags", []),
-        }
-        job = store.neu(daten.get("name", "Auftrag"), eingabe)
-        worker.einreihen(job.id)
-        return self._json(201, job.dict())
+        # Bild-Upload: rohe Bytes, Dateiname als ?name=…
+        if pfad.startswith("/jobs/") and pfad.endswith("/bild"):
+            job_id = pfad.split("/")[2]
+            if not store.laden(job_id):
+                return self._json(404, {"fehler": "Auftrag nicht gefunden"})
+            from urllib.parse import parse_qs, urlparse
+            name = (parse_qs(urlparse(self.path).query).get("name", ["bild.jpg"])[0])
+            name = name.replace("/", "_").replace("\\", "_")   # kein Pfad-Ausbruch
+            (store.bilder_dir(job_id) / name).write_bytes(self.rfile.read(laenge))
+            return self._json(201, {"gespeichert": name, "anzahl": len(store.bilder(job_id))})
+
+        # Verarbeitung anstoßen (nach dem Upload).
+        if pfad.startswith("/jobs/") and pfad.endswith("/start"):
+            job_id = pfad.split("/")[2]
+            job = store.laden(job_id)
+            if not job:
+                return self._json(404, {"fehler": "Auftrag nicht gefunden"})
+            worker.einreihen(job_id)
+            return self._json(202, {"gestartet": job_id})
+
+        # Auftrag anlegen.
+        if pfad == "/jobs":
+            try:
+                daten = json.loads(self.rfile.read(laenge) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._json(400, {"fehler": "ungültiges JSON"})
+            eingabe = {"laser": daten.get("laser", []), "tags": daten.get("tags", [])}
+            job = store.neu(daten.get("name", "Auftrag"), eingabe)
+            # auto=false: nicht sofort rechnen, erst Bilder hochladen, dann /start.
+            if daten.get("auto", True):
+                worker.einreihen(job.id)
+            return self._json(201, job.dict())
+
+        return self._json(404, {"fehler": "unbekannter Pfad"})
 
 
 def _statusseite(store: JobStore) -> str:

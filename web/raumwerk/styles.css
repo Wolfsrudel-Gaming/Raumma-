@@ -155,6 +155,15 @@ svg.plan[hidden] { display: none; }   /* schlägt die display-Regel, sonst bleib
 .graum-name { font-size: 13px; font-weight: 700; fill: #16302f; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3; }
 .graum-mass { font-size: 11px; fill: #45585a; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 2.5; }
 
+/* Pipeline-Panel */
+.pip-job { display: flex; align-items: center; gap: 8px; padding: 4px 2px; border-bottom: 1px solid #eef2f2; font-size: 12.5px; }
+.pip-name { flex: 1; }
+.pip-status { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eef2f2; color: var(--grau); }
+.pip-status.fertig { background: #e3f3ea; color: var(--ok); }
+.pip-status.laeuft { background: #fff3d9; color: var(--hint); }
+.pip-status.fehler { background: var(--warn-bg); color: var(--warn); }
+.pip-info { margin-top: 8px; font-size: 12px; background: #f3f8f8; border-left: 4px solid var(--tk); padding: 8px 10px; border-radius: 0 6px 6px 0; font-variant-numeric: tabular-nums; }
+
 /* Foto-Pins im Plan */
 .foto-pin { cursor: grab; }
 .pin-koerper { fill: #d98324; stroke: #8a4b0a; stroke-width: 1.3; }

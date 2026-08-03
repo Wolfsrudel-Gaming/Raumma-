@@ -51,6 +51,17 @@ class JobStore:
     def dir(self, job_id: str) -> Path:
         return self.cfg.jobs_dir() / job_id
 
+    def bilder_dir(self, job_id: str) -> Path:
+        d = self.dir(job_id) / "bilder"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def bilder(self, job_id: str) -> list[str]:
+        d = self.dir(job_id) / "bilder"
+        if not d.exists():
+            return []
+        return sorted(p.name for p in d.iterdir() if p.is_file())
+
     def neu(self, name: str, eingabe: dict) -> Job:
         job = Job(id=uuid.uuid4().hex[:12], name=name or "Auftrag", eingabe=eingabe)
         self.dir(job.id).mkdir(parents=True, exist_ok=True)
