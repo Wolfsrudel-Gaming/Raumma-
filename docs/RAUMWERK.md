@@ -18,7 +18,7 @@ Seitenzweig:
 | Schicht | Konzept | Stand in diesem Repo |
 |---|---|---|
 | ① Erfassung (Feld) | Eigene App: Video/Foto/IMU/Laser/Tags | offen (Hardware/App-Phase) |
-| ② Verarbeitung (Server-CPU) | COLMAP → OpenMVS → Maß-Solver → Semantik | offen (Pipeline-Phase) |
+| ② Verarbeitung (Server-CPU) | COLMAP → OpenMVS → Maß-Solver → Semantik | **Gerüst gebaut** (`pipeline/`) |
 | **③ Viewer & Planung (Browser)** | **Messen · Klötzchen mit Abstandsprüfung · Varianten · Report** | **gebaut** (`web/raumwerk/`) |
 | ✦ Fotorealismus (GPU-Burst) | Gaussian Splatting, nur bei Bedarf | offen (optional) |
 
@@ -86,6 +86,26 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
 Persistenz über `localStorage` – kein Server nötig, offline- und
 kundenlink-tauglich, wie im Konzept vorgesehen.
 
+### Verarbeitungs-Pipeline (Schicht ②, Gerüst)
+
+`pipeline/` – ein lauffähiges, getestetes Server-Gerüst (Python-Standard-
+bibliothek, keine Fremd-Deps) für die Photogrammetrie-Verarbeitung:
+
+- **Job-Queue mit einem Worker**, `nice`/`ionice`, optionales Nacht-Fenster
+  (§11: Koexistenz auf dem geteilten Server).
+- Die Stufen **SfM → Dichte Wolke → Maß-Solver → Komponenten → Semantik**;
+  real via COLMAP/OpenMVS (Kommandos dokumentiert) oder im **Simulationsmodus**,
+  sodass alles ohne die schweren Binaries end-to-end durchläuft.
+- Der **Maß-Solver** ist echt gerechnet (Laser-Constraints → Maßstab,
+  Kontrollmaß → Genauigkeitszahl §7, konservative Rundung wie im Kern).
+- **Docker** mit CPU-/RAM-Limits (cgroups), HTTP-API, Tests.
+
+```
+cd pipeline
+python3 -m unittest discover -s tests -t .   # 8 Tests
+python3 -m raumwerk_pipeline demo            # Beispiel-Auftrag
+```
+
 **Starten:**
 
 ```
@@ -131,10 +151,12 @@ Werte wurden gegeneinander geprüft (identische Ergebnisse für alle Testfälle)
 
 Ehrlichkeit über die Grenzen, wie im Konzept:
 
-- **Erfassung und Photogrammetrie** (Schichten ① und ②) – die eigene
-  Capture-App und die COLMAP/OpenMVS/Laser-Solver-Pipeline. Das ist die
-  Hardware-/Server-Phase; die Browser-Planung arbeitet bis dahin auf dem
-  manuell erfassten Grundriss (Kurzform oder Polygonzug).
+- **Erfassung** (Schicht ①) – die eigene Capture-App (Video/Foto/IMU/Laser).
+  Hardware-/App-Phase; die Browser-Planung arbeitet bis dahin auf dem manuell
+  erfassten Grundriss (Kurzform oder Polygonzug).
+- **Echte Photogrammetrie** (Schicht ②) – das Pipeline-**Gerüst** steht
+  (`pipeline/`), aber COLMAP/OpenMVS sind noch nicht angebunden (läuft im
+  Simulationsmodus); der Maß-Solver rechnet bereits echt.
 - **Punktwolken-Viewer (Potree)** – heute wird der Grundriss maßstäblich in 2D
   gezeichnet. Die Punktwolke ist die Realität, das hier gebaute Kern-Modell die
   planbare, prüfbare Struktur darüber; beide werden in der Verarbeitungsschicht

@@ -1,0 +1,25 @@
+# Kapselung und Ressourcenkontrolle (Konzept §11).
+#
+# Der Server wird geteilt – die Pipeline bekommt harte CPU-/RAM-Grenzen
+# (cgroups) und einen einzelnen Worker, damit sie andere Dienste nie
+# aushungert. Schwere Läufe bevorzugt nachts: RAUMWERK_NACHT unten setzen.
+services:
+  pipeline:
+    build: .
+    image: raumwerk-pipeline
+    container_name: raumwerk-pipeline
+    ports:
+      - "8781:8781"
+    volumes:
+      - ./daten:/daten          # Roh- und Ergebnisdaten; Lebenszyklus beachten
+    environment:
+      RAUMWERK_MAX_CPUS: "2"
+      RAUMWERK_MAX_RAM_MB: "4096"
+      RAUMWERK_NICE: "15"       # niedrige CPU-Priorität
+      RAUMWERK_IONICE: "3"      # I/O nur, wenn die Platte frei ist
+      # RAUMWERK_NACHT: "22,6"  # optional: nur zwischen 22 und 6 Uhr rechnen
+    # Harte Grenzen (cgroups): mehr als das kann der Container nie nehmen.
+    cpus: "2.0"
+    mem_limit: "4g"
+    pids_limit: 256
+    restart: unless-stopped

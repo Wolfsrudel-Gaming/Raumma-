@@ -1,0 +1,14 @@
+{
+  "name": "Technikraum Musterstraße 1",
+  "laser": [
+    { "von": "Ecke A", "bis": "Ecke B", "distanzM": 4.20 },
+    { "von": "Ecke B", "bis": "Ecke C", "distanzM": 3.00 },
+    { "von": "Ecke C", "bis": "Ecke D", "distanzM": 2.50 },
+    { "von": "Ecke A", "bis": "Ecke D", "distanzM": 5.15 },
+    { "von": "Ecke A", "bis": "Ecke C", "distanzM": 5.16 }
+  ],
+  "tags": [
+    { "art": "ZAEHLERSCHRANK", "notiz": "linke Wand" },
+    { "art": "KABEL_NYM5" }
+  ]
+}
