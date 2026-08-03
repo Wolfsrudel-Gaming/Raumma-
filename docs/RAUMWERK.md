@@ -76,6 +76,10 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
   Übersicht per Ziehen angeordnet (Kanten rasten an Nachbarräume ein) oder per
   „links/rechts/davor/dahinter" an den aktiven Raum angelegt. Geschosse
   umschaltbar.
+- **3D-Ansicht** – die Räume als begehbares Modell (`modell3d.js`, three.js):
+  umschauen, Räume im Raum schieben, in Augenhöhe hindurchgehen. three.js liegt
+  lokal unter `web/lib/` (MIT) und wird erst beim Öffnen der Ansicht geladen;
+  beim Verlassen wird das Modell abgebaut, damit es keinen Akku zieht.
 - **PDF-Report** – die gewählte Variante als druckbares Dokument, inklusive
   Maß-Herkunft und konservativer Rundungsregel.
 

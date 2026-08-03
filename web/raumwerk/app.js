@@ -17,7 +17,7 @@ import * as G from "../geometrie.js";
 import { KATALOG, Kategorie, finde } from "../komponenten.js";
 import { pruefe } from "../pruefung.js";
 import * as Normmasse from "../normmasse.js";
-import { anlegen, Seite } from "../platzierung.js";
+import { anlegen, einrasten, Seite } from "../platzierung.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -27,8 +27,10 @@ let auswahl = null;        // { typ: "platzhalter"|"einbau", id } oder null
 let paletteWahl = null;    // scharf gestellte Komponente (Klötzchen) zum Platzieren
 let einbauWahl = null;     // scharf gestellte Einbau-Art zum Platzieren
 let modus = "auswahl";     // auswahl | platzieren | messen-strecke | messen-flaeche
-let ansicht = "raum";      // raum | gebaeude
+let ansicht = "raum";      // raum | gebaeude | 3d
 let befunde = [];
+let modell3d = null;       // three.js-Modell, erst beim Öffnen der 3D-Ansicht geladen
+let modus3d = "drehen";    // drehen | verschieben | begehen
 
 const svg = $("plan");
 const svgGeb = $("gebaeude");
@@ -240,13 +242,65 @@ function onRaumMove(id, patch) {
 }
 
 function setAnsicht(a) {
+  const vorher = ansicht;
   ansicht = a;
   // SVG-Elemente spiegeln die .hidden-Property NICHT auf das Attribut – daher
   // das Attribut explizit setzen, sonst greift die CSS-Regel verkehrt.
   svg.toggleAttribute("hidden", a !== "raum");
   svgGeb.toggleAttribute("hidden", a !== "gebaeude");
+  $("modell3d").toggleAttribute("hidden", a !== "3d");
+  // 3D beim Verlassen abbauen: die Grafik rechnet sonst im Hintergrund weiter
+  // und zieht Akku (Hinweis aus EINBAU.md).
+  if (vorher === "3d" && a !== "3d" && modell3d) { modell3d.dispose(); modell3d = null; }
   render();
-  requestAnimationFrame(() => (a === "raum" ? plan.einpassen() : gebaeude.einpassen()));
+  if (a === "3d") requestAnimationFrame(dreiDStarten);
+  else requestAnimationFrame(() => (a === "raum" ? plan.einpassen() : gebaeude.einpassen()));
+}
+
+/** Räume in die Form bringen, die modell3d.js erwartet (englische Feldnamen). */
+function raeumeFuer3d() {
+  return raeume().map(r => ({
+    id: r.id, name: r.name, number: r.nummer, floor: r.geschoss,
+    corners: G.ecken(r), posX: Number(r.xM) || 0, posY: Number(r.yM) || 0,
+    rotationDeg: Number(r.drehungGrad) || 0, heightM: Number(r.hoeheM) || 2.5, color: r.farbe,
+    openings: projekt.oeffnungen.filter(o => o.raumId === r.id).map(o => ({
+      wallIndex: o.wandIndex ?? 0, offsetM: Number(o.abstandM) || 0, widthM: Number(o.breiteM) || 0,
+      sillM: Number(o.bruestungM) || 0, heightM: Number(o.hoeheM) || 0
+    })),
+    fixtures: projekt.einbauten.filter(e => e.raumId === r.id).map(e => ({
+      id: e.id, roomId: r.id, type: e.art, mount: e.befestigung || Normmasse.befestigung(e.art),
+      wallIndex: e.wandIndex ?? 0, offsetM: Number(e.abstandM) || 0,
+      heightM: e.hoeheM != null ? Number(e.hoeheM) : null,
+      relX: Number(e.relX ?? 0.5), relY: Number(e.relY ?? 0.5)
+    }))
+  }));
+}
+
+/** Lädt three.js beim ersten Öffnen und füllt das Modell. */
+async function dreiDStarten() {
+  const container = $("modell3d");
+  if (!modell3d) {
+    try {
+      const mod = await import("../modell3d.js");
+      modell3d = mod.createModel(container, { onSelect: on3dSelect, onMoved: on3dMoved, snap: on3dSnap });
+    } catch (_) {
+      container.innerHTML = `<div class="dreid-fehler">3D-Ansicht konnte nicht geladen werden (three.js fehlt unter web/lib/).</div>`;
+      return;
+    }
+  }
+  modell3d.setRooms(raeumeFuer3d());
+  modell3d.setMode(modus3d);
+  modell3d.resize();
+}
+
+function on3dSelect(daten) { if (daten) { projekt.aktiverRaum = daten.id; auswahl = null; render(); } }
+function on3dMoved(daten) {
+  const r = raeume().find(x => x.id === daten.id);
+  if (r) { r.xM = daten.posX; r.yM = daten.posY; render(); }
+}
+function on3dSnap(modelRaum, nx, ny) {
+  const echt = raeume().find(r => r.id === modelRaum.id);
+  return echt ? einrasten(echt, nx, ny, raeume()) : [nx, ny];
 }
 
 /** Neuen Raum an den aktiven anlegen – „liegt rechts/hinter …" ohne Fingerschieben. */
@@ -286,6 +340,7 @@ function renderRaeume() {
     <div class="ansicht-wahl">
       <button class="werkzeug ${ansicht === "raum" ? "aktiv" : ""}" data-ansicht="raum">Rauminnen</button>
       <button class="werkzeug ${ansicht === "gebaeude" ? "aktiv" : ""}" data-ansicht="gebaeude">Gebäude</button>
+      <button class="werkzeug ${ansicht === "3d" ? "aktiv" : ""}" data-ansicht="3d">3D</button>
     </div>
     ${geschosse.length > 1 ? `<div class="feld"><label>Geschoss</label><div class="chips">
       ${geschosse.map(n => `<button class="chip ${n === g ? "aktiv" : ""}" data-geschoss="${n}">${geschossName(n)}</button>`).join("")}
@@ -504,6 +559,14 @@ function renderEinbauPalette() {
 
 function renderWerkzeuge() {
   const panel = $("panelWerkzeuge");
+  if (ansicht === "3d") {
+    const wz = [["drehen", "Umschauen"], ["verschieben", "Räume schieben"], ["begehen", "Begehen"]];
+    panel.innerHTML = wz.map(([m, t]) =>
+      `<button class="werkzeug ${modus3d === m ? "aktiv" : ""}" data-modus3d="${m}">${t}</button>`).join("");
+    panel.querySelectorAll("[data-modus3d]").forEach(b =>
+      b.onclick = () => { modus3d = b.getAttribute("data-modus3d"); modell3d?.setMode(modus3d); renderWerkzeuge(); renderStatus(); });
+    return;
+  }
   const wz = [["auswahl", "Auswahl"], ["messen-strecke", "Messen ↔"], ["messen-flaeche", "Fläche ▱"]];
   panel.innerHTML = wz.map(([m, t]) =>
     `<button class="werkzeug ${modus === m ? "aktiv" : ""}" data-modus="${m}">${t}</button>`).join("");
@@ -533,6 +596,14 @@ function warnungenVariante(v) {
 function renderStatus() {
   if (ansicht === "gebaeude") {
     $("statusZeile").textContent = "Räume ziehen zum Anordnen · Kanten rasten an Nachbarräume ein · Klick wählt den aktiven Raum";
+    return;
+  }
+  if (ansicht === "3d") {
+    $("statusZeile").textContent = {
+      drehen: "Ziehen dreht die Ansicht · Rad zoomt · Raum anklicken wählt ihn",
+      verschieben: "Räume im Modell schieben – Kanten rasten ein",
+      begehen: "Begehen: WASD / Pfeiltasten laufen, ziehen schaut um"
+    }[modus3d] || "";
     return;
   }
   const wasName = einbauWahl ? Normmasse.ARTEN.get(einbauWahl) : finde(paletteWahl)?.name ?? "";
@@ -673,7 +744,11 @@ function verdrahteKopf() {
       projekt = Store.beispielProjekt(); auswahl = null; palettenLeeren(); setModus("auswahl"); setAnsicht("raum");
     }
   };
-  $("btnEinpassen").onclick = () => (ansicht === "raum" ? plan.einpassen() : gebaeude.einpassen());
+  $("btnEinpassen").onclick = () => {
+    if (ansicht === "raum") plan.einpassen();
+    else if (ansicht === "gebaeude") gebaeude.einpassen();
+    else modell3d?.resize();
+  };
   $("btnExport").onclick = exportJson;
   $("btnImport").onclick = () => $("fileImport").click();
   $("fileImport").onchange = e => importJson(e.target.files[0]);
@@ -726,7 +801,11 @@ window.addEventListener("keydown", e => {
   }
 });
 
-window.addEventListener("resize", () => (ansicht === "raum" ? plan.zeichne() : gebaeude.zeichne()));
+window.addEventListener("resize", () => {
+  if (ansicht === "raum") plan.zeichne();
+  else if (ansicht === "gebaeude") gebaeude.zeichne();
+  else modell3d?.resize();
+});
 
 // ------------------------------------------------------- Hilfsfunktionen
 

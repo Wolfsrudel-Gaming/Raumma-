@@ -109,6 +109,10 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: v
 .mess-ergebnis:empty { display: none; }
 svg.plan { flex: 1; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
 svg.plan[hidden] { display: none; }   /* schlägt die display-Regel, sonst bleibt die versteckte Ansicht sichtbar */
+.modell3d { flex: 1; width: 100%; height: 100%; position: relative; touch-action: none; background: #eaf2f2; overflow: hidden; }
+.modell3d[hidden] { display: none; }
+.modell3d canvas { display: block; }
+.dreid-fehler { padding: 24px; color: var(--grau); font-size: 13px; }
 .plan-fuss { position: absolute; bottom: 8px; left: 10px; font-size: 11px; color: var(--grau); background: rgba(255, 255, 255, .8); padding: 3px 8px; border-radius: 6px; }
 
 /* SVG-Ebenen */
