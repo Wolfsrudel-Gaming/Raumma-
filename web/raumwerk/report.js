@@ -17,20 +17,23 @@ import { VERSION } from "../regelwerk.js";
 const cm = m => `${Math.round(Number(m) * 100)} cm`;
 
 export function bericht(projekt, variante, befunde, svgMarkup, svgGroesse) {
-  const raum = projekt.raum;
+  const raum = projekt.raeume.find(r => r.id === projekt.aktiverRaum) || projekt.raeume[0];
+  const oeffnungen = projekt.oeffnungen.filter(o => o.raumId === raum.id);
+  const fotos = projekt.fotos.filter(f => f.raumId === raum.id);
+  const platzhalterRaum = variante.platzhalter.filter(p => p.raumId === raum.id);
   const flaeche = G.flaeche(raum).toFixed(2);
   const umfang = G.wandLaengen(raum).reduce((a, b) => a + b, 0).toFixed(2);
   const warnungen = befunde.filter(b => b.schwere === "WARNUNG");
   const datum = new Date().toLocaleDateString("de-DE", { year: "numeric", month: "long", day: "numeric" });
 
-  const oeffZeilen = projekt.oeffnungen.map(o =>
+  const oeffZeilen = oeffnungen.map(o =>
     `<tr><td>Wand ${(o.wandIndex ?? 0) + 1}</td><td>${artName(o.art)}</td>
      <td>${cm(o.breiteM)} × ${cm(o.hoeheM)}</td><td>${cm(o.abstandM)} ab Ecke</td></tr>`).join("");
 
   const wandZeilen = G.wandLaengen(raum).map((l, i) =>
     `<tr><td>Wand ${i + 1}</td><td>${l.toFixed(2)} m</td></tr>`).join("");
 
-  const klotzZeilen = variante.platzhalter.map(ph => {
+  const klotzZeilen = platzhalterRaum.map(ph => {
     const k = finde(ph.komponente);
     return `<tr><td>${ph.bezeichnung || (k ? k.name : ph.komponente)}</td>
       <td>${k ? `${cm(k.breiteM)} × ${cm(k.tiefeM)} × ${cm(k.hoeheM)}` : "–"}</td></tr>`;
@@ -92,7 +95,7 @@ export function bericht(projekt, variante, befunde, svgMarkup, svgGroesse) {
   <div class="kennzahl"><b>${flaeche} m²</b><span>Grundfläche</span></div>
   <div class="kennzahl"><b>${umfang} m</b><span>Wandumfang</span></div>
   <div class="kennzahl"><b>${Number(raum.hoeheM).toFixed(2)} m</b><span>Raumhöhe</span></div>
-  <div class="kennzahl"><b>${variante.platzhalter.length}</b><span>Geräte geplant</span></div>
+  <div class="kennzahl"><b>${platzhalterRaum.length}</b><span>Geräte geplant</span></div>
 </div>
 
 <h2>Grundriss</h2>
@@ -117,8 +120,8 @@ Foto-Rekonstruktion sind Kontextmaße (± cm); laser- oder kataloggesicherte Ma�
 <h2>Geplante Geräte</h2>
 <table><tr><th>Bezeichnung</th><th>Baumaß (B×T×H)</th></tr>${klotzZeilen || `<tr><td colspan="2">keine</td></tr>`}</table>
 
-${(projekt.fotos && projekt.fotos.length) ? `<h2>Verortete Fotos</h2>
-<div class="galerie">${projekt.fotos.map((f, i) => `
+${(fotos && fotos.length) ? `<h2>Verortete Fotos</h2>
+<div class="galerie">${fotos.map((f, i) => `
   <figure class="foto"><img src="${f.datenUrl}" alt=""><figcaption>${i + 1}. ${esc(f.titel || "Foto")}${f.notiz ? `<br><span>${esc(f.notiz)}</span>` : ""}</figcaption></figure>`).join("")}</div>` : ""}
 
 <div class="fuss"><span>RAUMWERK · Konzept-Prototyp · Vertraulich</span><span>Kein Rechts- oder Prüfnachweis – Richtwerte, fachlich abzusichern.</span></div>

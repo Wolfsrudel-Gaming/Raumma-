@@ -38,17 +38,27 @@ const BEISPIEL_FOTO = "data:image/svg+xml," + encodeURIComponent(
     <text x='40' y='202' font-family='sans-serif' font-size='12' fill='#5a6a70'>(Platzhalter – vor Ort das echte Foto)</text>
   </svg>`);
 
-/** Ein frisches Beispielprojekt: ein Technikraum, an dem sich alles zeigt. */
+/** Ein frisches Beispielprojekt: ein Technikraum mit Nachbarraum. */
 export function beispielProjekt() {
   const raumId = neueId("raum");
+  const lagerId = neueId("raum");
   return {
     name: "Technikraum (Beispiel)",
-    raum: {
-      id: raumId, name: "Technikraum", nummer: "T.01", geschoss: 0,
-      breiteM: 4.2, breiteVorneM: null, tiefeM: 3.0, schraege: "KEINE",
-      umriss: "", hoeheM: 2.5, xM: 0, yM: 0, drehungGrad: 0,
-      farbe: "#cfe8e9", notiz: ""
-    },
+    raeume: [
+      {
+        id: raumId, name: "Technikraum", nummer: "T.01", geschoss: 0,
+        breiteM: 4.2, breiteVorneM: null, tiefeM: 3.0, schraege: "KEINE",
+        umriss: "", hoeheM: 2.5, xM: 0, yM: 0, drehungGrad: 0,
+        farbe: "#cfe8e9", notiz: ""
+      },
+      {
+        id: lagerId, name: "Lager", nummer: "T.02", geschoss: 0,
+        breiteM: 2.5, breiteVorneM: null, tiefeM: 3.0, schraege: "KEINE",
+        umriss: "", hoeheM: 2.5, xM: 4.2, yM: 0, drehungGrad: 0,
+        farbe: "#e6d8b5", notiz: ""
+      }
+    ],
+    aktiverRaum: raumId,
     oeffnungen: [
       { id: neueId("oef"), raumId, art: "TUER", bezeichnung: "Zugang",
         wandIndex: 0, abstandM: 1.6, breiteM: 0.885, hoeheM: 2.01, bruestungM: 0 }
@@ -103,7 +113,11 @@ export function ausObjekt(o) { return migriere(o); }
 
 /** Nachsichtig: fehlende Felder auffüllen, damit ein alter Stand nicht bricht. */
 function migriere(p) {
-  if (!p.raum) return beispielProjekt();
+  // Einzelraum-Projekte (alter Stand) auf die Räume-Liste heben.
+  if (p.raum && !p.raeume) { p.raeume = [p.raum]; delete p.raum; }
+  if (!p.raeume || !p.raeume.length) return beispielProjekt();
+  p.aktiverRaum ??= p.raeume[0].id;
+  if (!p.raeume.some(r => r.id === p.aktiverRaum)) p.aktiverRaum = p.raeume[0].id;
   p.oeffnungen ??= [];
   p.einbauten ??= [];
   p.fotos ??= [];

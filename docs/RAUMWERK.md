@@ -72,6 +72,10 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
 - **Messen** – Punkt-zu-Punkt und Fläche, konservativ (untere Schranke).
 - **Varianten** – Szenarien anlegen, duplizieren, vergleichen (Warnungen je
   Variante). Genau das „Alternativen durchspielen ohne zweite Anfahrt".
+- **Mehrraum & Gebäude** – mehrere Räume je Geschoss, in einer Gebäude-
+  Übersicht per Ziehen angeordnet (Kanten rasten an Nachbarräume ein) oder per
+  „links/rechts/davor/dahinter" an den aktiven Raum angelegt. Geschosse
+  umschaltbar.
 - **PDF-Report** – die gewählte Variante als druckbares Dokument, inklusive
   Maß-Herkunft und konservativer Rundungsregel.
 
@@ -110,6 +114,9 @@ späterer Server dieselben Zahlen für den Report liefert:
 | `Komponente.kt` | `web/komponenten.js` |
 | `Regelwerk.kt` | `web/regelwerk.js` |
 | `Pruefung.kt` | `web/pruefung.js` |
+| `Normmasse.kt` | `web/normmasse.js` |
+| `Platzierung.kt` | `web/platzierung.js` |
+| `Geometrie.kt` | `web/geometrie.js` |
 
 **Regel:** Die Kotlin-Tests sind verbindlich, die JS-Dateien folgen ihnen. Die
 Werte wurden gegeneinander geprüft (identische Ergebnisse für alle Testfälle).
@@ -128,8 +135,8 @@ Ehrlichkeit über die Grenzen, wie im Konzept:
   gezeichnet. Die Punktwolke ist die Realität, das hier gebaute Kern-Modell die
   planbare, prüfbare Struktur darüber; beide werden in der Verarbeitungsschicht
   zusammengeführt.
-- **Fotorealismus (Splatting)** und **Mehrraum-Anordnung** – Ausbaustufen aus
-  den Phasen 2/3 des Konzepts.
+- **Fotorealismus (Splatting)** – Ausbaustufe aus Phase 2 des Konzepts
+  (optionaler GPU-Burst).
 - **Norm-Zahlen final absichern** – die Werte in `Regelwerk.kt` sind
   konservative Richtwerte mit Quellenangabe; wo Haftung berührt ist, gehören
   sie fachlich/normativ geprüft (Konzept §8, §14).

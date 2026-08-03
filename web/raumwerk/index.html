@@ -30,8 +30,12 @@
   <main class="raster">
     <!-- Linke Spalte: Erfassung & Palette -->
     <aside class="spalte links">
+      <section class="block" id="blockRaeume">
+        <h2>Gebäude &amp; Räume</h2>
+        <div id="panelRaeume"></div>
+      </section>
       <section class="block" id="blockRaum">
-        <h2>Raum</h2>
+        <h2>Aktiver Raum</h2>
         <div id="panelRaum"></div>
       </section>
       <section class="block" id="blockOeffnungen">
@@ -66,6 +70,7 @@
         </div>
       </div>
       <svg id="plan" class="plan"></svg>
+      <svg id="gebaeude" class="plan" hidden></svg>
       <div class="plan-fuss" id="statusZeile"></div>
     </section>
 

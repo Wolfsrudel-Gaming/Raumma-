@@ -11,11 +11,13 @@
 
 import * as Store from "./store.js";
 import { Plan } from "./plan2d.js";
+import { Gebaeude } from "./gebaeude.js";
 import { bericht } from "./report.js";
 import * as G from "../geometrie.js";
 import { KATALOG, Kategorie, finde } from "../komponenten.js";
 import { pruefe } from "../pruefung.js";
 import * as Normmasse from "../normmasse.js";
+import { anlegen, Seite } from "../platzierung.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -25,35 +27,52 @@ let auswahl = null;        // { typ: "platzhalter"|"einbau", id } oder null
 let paletteWahl = null;    // scharf gestellte Komponente (Klötzchen) zum Platzieren
 let einbauWahl = null;     // scharf gestellte Einbau-Art zum Platzieren
 let modus = "auswahl";     // auswahl | platzieren | messen-strecke | messen-flaeche
+let ansicht = "raum";      // raum | gebaeude
 let befunde = [];
 
 const svg = $("plan");
+const svgGeb = $("gebaeude");
 const plan = new Plan(svg, {
   onSelect, onPlatzhalterMove, onPlace, onMessung, onEinbauSelect, onEinbauMove,
   onFotoMove, onFotoOeffnen
 });
+const gebaeude = new Gebaeude(svgGeb, { onSelect: onRaumSelect, onMove: onRaumMove });
 
 // ------------------------------------------------------------- Kern
 
-function raum() { return projekt.raum; }
+/** Alle Räume; der aktive Raum ist der, den die Detailansicht bearbeitet. */
+function raeume() { return projekt.raeume; }
+function raum() { return projekt.raeume.find(r => r.id === projekt.aktiverRaum) || projekt.raeume[0]; }
 function platzhalter() { return Store.platzhalter(projekt); }
+
+// Auf den aktiven Raum gefilterte Sichten – jedes Objekt trägt seine raumId.
+function oeffnungenAkt() { const id = raum().id; return projekt.oeffnungen.filter(o => o.raumId === id); }
+function einbautenAkt() { const id = raum().id; return projekt.einbauten.filter(e => e.raumId === id); }
+function fotosAkt() { const id = raum().id; return projekt.fotos.filter(f => f.raumId === id); }
+function platzhalterAkt() { const id = raum().id; return platzhalter().filter(p => p.raumId === id); }
+
 function gewaehltPlatzhalter() { return auswahl?.typ === "platzhalter" ? platzhalter().find(p => p.id === auswahl.id) : null; }
 function gewaehltEinbau() { return auswahl?.typ === "einbau" ? projekt.einbauten.find(e => e.id === auswahl.id) : null; }
 function palettenLeeren() { paletteWahl = null; einbauWahl = null; }
 
 function pruefenJetzt() {
-  befunde = pruefe(raum(), platzhalter());
+  befunde = pruefe(raum(), platzhalterAkt());
   return befunde;
 }
 
-/** Ein voller Durchlauf: prüfen, Plan zeichnen, Panels bauen, speichern. */
+/** Ein voller Durchlauf: prüfen, Ansicht zeichnen, Panels bauen, speichern. */
 function render() {
   pruefenJetzt();
-  plan.setModell({
-    raum: raum(), oeffnungen: projekt.oeffnungen, einbauten: projekt.einbauten,
-    platzhalter: platzhalter(), fotos: projekt.fotos, befunde, auswahl
-  }).zeichne();
+  if (ansicht === "raum") {
+    plan.setModell({
+      raum: raum(), oeffnungen: oeffnungenAkt(), einbauten: einbautenAkt(),
+      platzhalter: platzhalterAkt(), fotos: fotosAkt(), befunde, auswahl
+    }).zeichne();
+  } else {
+    gebaeude.setModell({ raeume: raeume(), geschoss: raum().geschoss, aktivId: raum().id }).zeichne();
+  }
   renderKopf();
+  renderRaeume();
   renderRaum();
   renderOeffnungen();
   renderPalette();
@@ -141,7 +160,7 @@ function onFotoOeffnen(id) {
 
 function renderFotos() {
   const panel = $("panelFotos");
-  panel.innerHTML = projekt.fotos.map((f, i) => `
+  panel.innerHTML = fotosAkt().map((f, i) => `
     <div class="foto-zeile" data-foto="${f.id}">
       <img class="foto-mini" src="${f.datenUrl}" alt="">
       <div class="foto-mitte">
@@ -153,7 +172,7 @@ function renderFotos() {
     </div>`).join("") || `<p class="leer">Noch keine Fotos.</p>`;
   panel.insertAdjacentHTML("beforeend", `<button class="klein-knopf" id="fotoPlus">+ Foto hinzufügen</button>`);
 
-  projekt.fotos.forEach(f => {
+  fotosAkt().forEach(f => {
     const z = panel.querySelector(`[data-foto="${f.id}"]`);
     if (!z) return;
     z.querySelector(".foto-mini").onclick = () => lightboxZeigen(f);
@@ -207,6 +226,100 @@ function lightboxZeigen(f) {
 }
 
 function lightboxSchliessen() { $("lightbox").hidden = true; $("lbBild").src = ""; }
+
+// -------------------------------------------------- Gebäude / Räume
+
+function onRaumSelect(id) {
+  if (projekt.aktiverRaum === id) return;
+  projekt.aktiverRaum = id; auswahl = null; render();
+}
+
+function onRaumMove(id, patch) {
+  const r = raeume().find(x => x.id === id);
+  if (r) { Object.assign(r, patch); render(); }
+}
+
+function setAnsicht(a) {
+  ansicht = a;
+  // SVG-Elemente spiegeln die .hidden-Property NICHT auf das Attribut – daher
+  // das Attribut explizit setzen, sonst greift die CSS-Regel verkehrt.
+  svg.toggleAttribute("hidden", a !== "raum");
+  svgGeb.toggleAttribute("hidden", a !== "gebaeude");
+  render();
+  requestAnimationFrame(() => (a === "raum" ? plan.einpassen() : gebaeude.einpassen()));
+}
+
+/** Neuen Raum an den aktiven anlegen – „liegt rechts/hinter …" ohne Fingerschieben. */
+function raumAnlegen(seite) {
+  const basis = raum();
+  const neu = {
+    id: Store.neueId("raum"), name: `Raum ${raeume().length + 1}`, nummer: "", geschoss: basis.geschoss,
+    breiteM: 3, breiteVorneM: null, tiefeM: 3, schraege: "KEINE", umriss: "",
+    hoeheM: basis.hoeheM, xM: 0, yM: 0, drehungGrad: 0, farbe: "#e6d8b5", notiz: ""
+  };
+  Object.assign(neu, anlegen(neu, basis, seite));
+  raeume().push(neu);
+  projekt.aktiverRaum = neu.id; auswahl = null;
+  render();
+  if (ansicht === "gebaeude") requestAnimationFrame(() => gebaeude.einpassen());
+}
+
+function raumLoeschen(id) {
+  if (raeume().length <= 1) return;
+  projekt.raeume = raeume().filter(r => r.id !== id);
+  projekt.oeffnungen = projekt.oeffnungen.filter(o => o.raumId !== id);
+  projekt.einbauten = projekt.einbauten.filter(e => e.raumId !== id);
+  projekt.fotos = projekt.fotos.filter(f => f.raumId !== id);
+  for (const v of projekt.varianten) v.platzhalter = v.platzhalter.filter(p => p.raumId !== id);
+  if (projekt.aktiverRaum === id) projekt.aktiverRaum = raeume()[0].id;
+  auswahl = null; render();
+}
+
+function geschossName(n) { return n === 0 ? "EG" : n > 0 ? `${n}. OG` : `${-n}. UG`; }
+
+function renderRaeume() {
+  const panel = $("panelRaeume");
+  const geschosse = [...new Set(raeume().map(r => r.geschoss))].sort((a, b) => b - a);
+  const g = raum().geschoss;
+  const aufEbene = raeume().filter(r => r.geschoss === g);
+  panel.innerHTML = `
+    <div class="ansicht-wahl">
+      <button class="werkzeug ${ansicht === "raum" ? "aktiv" : ""}" data-ansicht="raum">Rauminnen</button>
+      <button class="werkzeug ${ansicht === "gebaeude" ? "aktiv" : ""}" data-ansicht="gebaeude">Gebäude</button>
+    </div>
+    ${geschosse.length > 1 ? `<div class="feld"><label>Geschoss</label><div class="chips">
+      ${geschosse.map(n => `<button class="chip ${n === g ? "aktiv" : ""}" data-geschoss="${n}">${geschossName(n)}</button>`).join("")}
+    </div></div>` : ""}
+    <div class="feld"><label>Räume auf ${geschossName(g)}</label>
+      ${aufEbene.map(r => `
+        <div class="raum-zeile ${r.id === raum().id ? "aktiv" : ""}" data-raum="${r.id}">
+          <button class="raum-wahl">${esc(r.name)}${r.nummer ? ` · ${esc(r.nummer)}` : ""}</button>
+          <span class="raum-flaeche">${G.flaeche(r).toFixed(1)} m²</span>
+          <button class="weg" title="Raum löschen" ${raeume().length <= 1 ? "disabled" : ""}>✕</button>
+        </div>`).join("")}
+    </div>
+    <div class="feld"><label>Neuen Raum anlegen an</label>
+      <div class="anlegen-knoepfe">
+        <button data-seite="LINKS">links</button>
+        <button data-seite="RECHTS">rechts</button>
+        <button data-seite="DAVOR">davor</button>
+        <button data-seite="DAHINTER">dahinter</button>
+      </div>
+    </div>`;
+
+  panel.querySelectorAll("[data-ansicht]").forEach(b => b.onclick = () => setAnsicht(b.getAttribute("data-ansicht")));
+  panel.querySelectorAll("[data-geschoss]").forEach(b => b.onclick = () => {
+    const n = parseInt(b.getAttribute("data-geschoss"));
+    const ziel = raeume().find(r => r.geschoss === n);
+    if (ziel) { projekt.aktiverRaum = ziel.id; auswahl = null; render(); }
+  });
+  panel.querySelectorAll(".raum-zeile").forEach(z => {
+    const id = z.getAttribute("data-raum");
+    z.querySelector(".raum-wahl").onclick = () => onRaumSelect(id);
+    z.querySelector(".weg").onclick = () => raumLoeschen(id);
+  });
+  panel.querySelectorAll("[data-seite]").forEach(b => b.onclick = () => raumAnlegen(b.getAttribute("data-seite")));
+}
 
 // ---------------------------------------------------------- Kopfleiste
 
@@ -315,7 +428,7 @@ function bindZug(r) {
 function renderOeffnungen() {
   const n = G.wandLaengen(raum()).length;
   const panel = $("panelOeffnungen");
-  panel.innerHTML = projekt.oeffnungen.map(o => `
+  panel.innerHTML = oeffnungenAkt().map(o => `
     <div class="liste-zeile" data-oef="${o.id}">
       <select class="o-art" title="Art">
         ${[["TUER", "Tür"], ["DURCHGANG", "Durchgang"], ["FENSTER", "Fenster"], ["TOR", "Tor"]]
@@ -330,7 +443,7 @@ function renderOeffnungen() {
     </div>`).join("") || `<p class="leer">Keine Öffnungen.</p>`;
   panel.insertAdjacentHTML("beforeend", `<button class="klein-knopf" id="oefPlus">+ Öffnung</button>`);
 
-  projekt.oeffnungen.forEach(o => {
+  oeffnungenAkt().forEach(o => {
     const z = panel.querySelector(`[data-oef="${o.id}"]`);
     if (!z) return;
     z.querySelector(".o-art").onchange = e => { o.art = e.target.value; render(); };
@@ -407,7 +520,21 @@ function setModus(m) {
   renderStatus();
 }
 
+/** Warnungen einer Variante über alle Räume – jede Prüfung braucht ihren Raum. */
+function warnungenVariante(v) {
+  let w = 0;
+  for (const r of raeume()) {
+    const phs = v.platzhalter.filter(p => p.raumId === r.id);
+    if (phs.length) w += pruefe(r, phs).filter(b => b.schwere === "WARNUNG").length;
+  }
+  return w;
+}
+
 function renderStatus() {
+  if (ansicht === "gebaeude") {
+    $("statusZeile").textContent = "Räume ziehen zum Anordnen · Kanten rasten an Nachbarräume ein · Klick wählt den aktiven Raum";
+    return;
+  }
   const wasName = einbauWahl ? Normmasse.ARTEN.get(einbauWahl) : finde(paletteWahl)?.name ?? "";
   const txt = {
     auswahl: "Gerät ziehen zum Verschieben · nahe Wand rastet es ein · Rad zoomt",
@@ -500,7 +627,7 @@ function renderVarianten() {
   panel.innerHTML = `<table class="var-tabelle">
     <tr><th>Variante</th><th>Geräte</th><th>Warnungen</th><th></th></tr>
     ${projekt.varianten.map((v, i) => {
-      const w = pruefe(raum(), v.platzhalter).filter(b => b.schwere === "WARNUNG").length;
+      const w = warnungenVariante(v);
       return `<tr class="${i === projekt.aktiveVariante ? "aktiv" : ""}" data-var="${i}">
         <td><a href="#" class="var-wahl">${esc(v.name)}</a></td>
         <td>${v.platzhalter.length}</td>
@@ -533,15 +660,20 @@ function verdrahteKopf() {
     }
   };
   $("btnReport").onclick = () => {
+    // Der Report zeigt den Grundriss des aktiven Raums – dafür in die
+    // Rauminnenansicht wechseln, damit die SVG-Maße stimmen.
+    if (ansicht !== "raum") setAnsicht("raum");
+    plan.einpassen();
     const r = svg.getBoundingClientRect();
-    bericht(projekt, Store.aktiveVariante(projekt), befunde, svg.innerHTML, { width: Math.round(r.width), height: Math.round(r.height) });
+    bericht(projekt, Store.aktiveVariante(projekt), pruefe(raum(), platzhalterAkt()), svg.innerHTML,
+      { width: Math.round(r.width) || 900, height: Math.round(r.height) || 560 });
   };
   $("btnReset").onclick = () => {
     if (confirm("Zum Beispielprojekt zurücksetzen? Der aktuelle Stand geht verloren.")) {
-      projekt = Store.beispielProjekt(); auswahl = null; paletteWahl = null; setModus("auswahl"); render(); plan.einpassen();
+      projekt = Store.beispielProjekt(); auswahl = null; palettenLeeren(); setModus("auswahl"); setAnsicht("raum");
     }
   };
-  $("btnEinpassen").onclick = () => plan.einpassen();
+  $("btnEinpassen").onclick = () => (ansicht === "raum" ? plan.einpassen() : gebaeude.einpassen());
   $("btnExport").onclick = exportJson;
   $("btnImport").onclick = () => $("fileImport").click();
   $("fileImport").onchange = e => importJson(e.target.files[0]);
@@ -567,8 +699,8 @@ function importJson(datei) {
   leser.onload = () => {
     try {
       const obj = Store.ausObjekt(JSON.parse(leser.result));
-      if (!obj.raum) throw new Error("kein Raum");
-      projekt = obj; auswahl = null; palettenLeeren(); setModus("auswahl"); render(); plan.einpassen();
+      if (!obj.raeume || !obj.raeume.length) throw new Error("keine Räume");
+      projekt = obj; auswahl = null; palettenLeeren(); setModus("auswahl"); setAnsicht("raum");
     } catch (_) {
       alert("Die Datei ist kein gültiges RAUMWERK-Projekt.");
     }
@@ -594,7 +726,7 @@ window.addEventListener("keydown", e => {
   }
 });
 
-window.addEventListener("resize", () => plan.zeichne());
+window.addEventListener("resize", () => (ansicht === "raum" ? plan.zeichne() : gebaeude.zeichne()));
 
 // ------------------------------------------------------- Hilfsfunktionen
 
