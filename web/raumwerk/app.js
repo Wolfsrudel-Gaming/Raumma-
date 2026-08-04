@@ -326,8 +326,10 @@ async function arMitKunde() {
   try {
     const mod = await import("./ar.js");
     await mod.starte({
-      raum: raum(), platzhalter: platzhalterAkt(), findeKomponente: finde,
-      onAenderung: () => render(),   // in AR verschoben → im Modell speichern + überall aktualisieren
+      raum: raum(), platzhalter: platzhalterAkt(), einbauten: einbautenAkt(),
+      findeKomponente: finde, neueId: Store.neueId,
+      einbauHinzufuegen: (e) => projekt.einbauten.push(e),   // vor Ort gesetzt → ins Modell
+      onAenderung: () => render(),   // sofort speichern + alle Ansichten aktualisieren
       onEnde: () => render(),
     });
   } catch (_) {
@@ -501,6 +503,10 @@ function renderRaum() {
       <div class="feld"><label>Geschoss</label><input id="rGeschoss" type="number" value="${r.geschoss}"></div>
       <div class="feld"><label>Höhe (m)</label><input id="rHoehe" type="number" step="0.05" value="${num(r.hoeheM)}"></div>
     </div>
+    <div class="feld"><label>Bodenaufbau / Estrich (m)</label>
+      <input id="rAufbau" type="number" step="0.01" value="${num(r.aufbauM ?? 0)}">
+      <span class="unter-hint">Höhe, um die der fertige Boden noch steigt. Einbau-Höhen zählen ab fertigem Boden.</span>
+    </div>
     <div class="feld"><label>Form</label>
       <div class="feld-reihe">
         <button class="klein-knopf ${imZug ? "" : "haupt"}" id="formKurz">Rechteck / Trapez</button>
@@ -513,6 +519,7 @@ function renderRaum() {
   bind("rNummer", "change", v => set({ nummer: v }));
   bind("rGeschoss", "change", v => set({ geschoss: parseInt(v) || 0 }));
   bind("rHoehe", "change", v => set({ hoeheM: pos(v, 2.5) }));
+  bind("rAufbau", "change", v => { const n = parseFloat(v); set({ aufbauM: isFinite(n) && n >= 0 ? n : 0 }); });
   $("formKurz").onclick = () => { if (imZug && confirm("Umriss verwerfen und zur Kurzform wechseln?")) set({ umriss: "" }); };
   $("formZug").onclick = () => { if (!imZug) set({ umriss: G.umrissSchreiben(G.ecken(r)) }); };
 

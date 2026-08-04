@@ -89,16 +89,25 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
   Browser (three.js, `wolke3d.js`) anzeigen – samt Maßstab und Kontrollmaß aus
   dem Manifest. Alternativ eine PLY-Datei öffnen. Das schließt den Kreis von
   der Server-Verarbeitung zurück in den Betrachter.
-- **AR-Besprechung vor Ort** (`ar.js`) – am PC planen, dann auf der Baustelle
-  die geplanten Geräte-Klötzchen über das echte Kamerabild legen und mit dem
-  Kunden durchsprechen. Hauptweg ist ein **Magic-Window** (Kamera +
-  Geräteausrichtung, **ohne ARCore** – wichtig, weil ARCore auf dem gerooteten
-  Feldgerät unzuverlässig ist, §5); wo verfügbar, lässt sich auf **WebXR**-
-  Welttracking aufwerten. **Direkt in AR:** ein Gerät antippen, den Boden
-  antippen – schon steht es woanders („der Kunde zeigt: lieber dorthin"), und
-  die Änderung wirkt sofort im Modell. Die **Normprüfung läuft live mit**: die
-  Freiraumzone vor jedem Gerät liegt am Boden, grün solange frei, **rot** bei
-  Unterschreitung. Braucht Kamera und einen sicheren Kontext (localhost/HTTPS).
+- **AR-Elektroplanung vor Ort** (`ar.js`) – am PC den Plan zeichnen (wo kommt
+  welche Steckdose, welcher Schalter, welche Leuchte hin, auf welcher Höhe),
+  dann auf der Baustelle über das echte Kamerabild legen und mit dem Kunden
+  setzen:
+  · **Einbauten setzen:** Art aus der Palette wählen, auf die Wand tippen – der
+    Einbau rastet an die Wand, auf DIN-Höhe. Antippen wählt, Wand antippen
+    verschiebt. Ein Regler stellt die **Höhe** ein (Anzeige „… cm über fertigem
+    Boden").
+  · **Estrich/Bodenaufbau** (`raum.aufbauM`): Höhen zählen ab dem *fertigen*
+    Boden. Der fertige Boden liegt als Ebene über dem Rohboden, jeder Einbau
+    sitzt um den Aufbau höher als im nackten Kamerabild – der noch fehlende
+    Estrich ist eingerechnet.
+  · **Kamerahöhe** einstellbar (Magic-Window); unter WebXR kommt sie vom Gerät.
+  · **Geräte-Klötzchen** als Kontext mit **Live-Normprüfung** (Freiraumzone
+    grün/rot).
+  Hauptweg ist ein **Magic-Window** (Kamera + Geräteausrichtung, **ohne
+  ARCore** – ARCore ist auf dem gerooteten Feldgerät unzuverlässig, §5); wo
+  verfügbar, lässt sich auf **WebXR**-Welttracking aufwerten. Braucht Kamera
+  und einen sicheren Kontext (localhost/HTTPS).
 - **PDF-Report** – die gewählte Variante als druckbares Dokument, inklusive
   Maß-Herkunft und konservativer Rundungsregel.
 

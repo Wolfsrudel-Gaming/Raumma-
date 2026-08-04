@@ -48,13 +48,13 @@ export function beispielProjekt() {
       {
         id: raumId, name: "Technikraum", nummer: "T.01", geschoss: 0,
         breiteM: 4.2, breiteVorneM: null, tiefeM: 3.0, schraege: "KEINE",
-        umriss: "", hoeheM: 2.5, xM: 0, yM: 0, drehungGrad: 0,
+        umriss: "", hoeheM: 2.5, aufbauM: 0.06, xM: 0, yM: 0, drehungGrad: 0,
         farbe: "#cfe8e9", notiz: ""
       },
       {
         id: lagerId, name: "Lager", nummer: "T.02", geschoss: 0,
         breiteM: 2.5, breiteVorneM: null, tiefeM: 3.0, schraege: "KEINE",
-        umriss: "", hoeheM: 2.5, xM: 4.2, yM: 0, drehungGrad: 0,
+        umriss: "", hoeheM: 2.5, aufbauM: 0.06, xM: 4.2, yM: 0, drehungGrad: 0,
         farbe: "#e6d8b5", notiz: ""
       }
     ],
@@ -121,6 +121,7 @@ function migriere(p) {
   if (!p.raeume || !p.raeume.length) return beispielProjekt();
   p.aktiverRaum ??= p.raeume[0].id;
   if (!p.raeume.some(r => r.id === p.aktiverRaum)) p.aktiverRaum = p.raeume[0].id;
+  for (const r of p.raeume) r.aufbauM ??= 0;   // Bodenaufbau/Estrich, m über Rohboden
   p.oeffnungen ??= [];
   p.einbauten ??= [];
   p.fotos ??= [];
