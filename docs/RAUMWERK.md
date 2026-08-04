@@ -94,8 +94,11 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
   Kunden durchsprechen. Hauptweg ist ein **Magic-Window** (Kamera +
   Geräteausrichtung, **ohne ARCore** – wichtig, weil ARCore auf dem gerooteten
   Feldgerät unzuverlässig ist, §5); wo verfügbar, lässt sich auf **WebXR**-
-  Welttracking aufwerten. Braucht Kamera und einen sicheren Kontext
-  (localhost oder HTTPS).
+  Welttracking aufwerten. **Direkt in AR:** ein Gerät antippen, den Boden
+  antippen – schon steht es woanders („der Kunde zeigt: lieber dorthin"), und
+  die Änderung wirkt sofort im Modell. Die **Normprüfung läuft live mit**: die
+  Freiraumzone vor jedem Gerät liegt am Boden, grün solange frei, **rot** bei
+  Unterschreitung. Braucht Kamera und einen sicheren Kontext (localhost/HTTPS).
 - **PDF-Report** – die gewählte Variante als druckbares Dokument, inklusive
   Maß-Herkunft und konservativer Rundungsregel.
 

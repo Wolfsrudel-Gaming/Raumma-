@@ -327,7 +327,8 @@ async function arMitKunde() {
     const mod = await import("./ar.js");
     await mod.starte({
       raum: raum(), platzhalter: platzhalterAkt(), findeKomponente: finde,
-      onEnde: () => { /* zurück zur zuletzt aktiven Ansicht – DOM bleibt bestehen */ },
+      onAenderung: () => render(),   // in AR verschoben → im Modell speichern + überall aktualisieren
+      onEnde: () => render(),
     });
   } catch (_) {
     alert("AR konnte nicht gestartet werden (Kamera/WebGL nötig).");
