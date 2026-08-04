@@ -10,6 +10,8 @@ dienen. Alles Fachliche ist enthalten, alles Projektspezifische nicht.
 
 ## RAUMWERK
 
+[![CI](https://github.com/Wolfsrudel-Gaming/Raumma-/actions/workflows/ci.yml/badge.svg)](https://github.com/Wolfsrudel-Gaming/Raumma-/actions/workflows/ci.yml)
+
 Auf diesem Kern baut **RAUMWERK** auf – das digitale Aufmaß- und
 Planungssystem aus dem Konzeptpapier. Umgesetzt ist die **Viewer- und
 Planungsschicht** samt proprietärem Kern:

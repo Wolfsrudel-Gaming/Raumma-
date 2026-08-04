@@ -1,0 +1,53 @@
+name: CI
+
+# Hält alle drei Ebenen grün: den Kotlin-Kern, die Verarbeitungs-Pipeline und
+# die JS-Spiegel im Browser-Teil.
+on:
+  push:
+  pull_request:
+
+jobs:
+  kotlin:
+    name: Kotlin-Kern (gradle test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Tests
+        run: |
+          chmod +x gradlew
+          ./gradlew test --no-daemon
+
+  python:
+    name: Pipeline (unittest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tests
+        working-directory: pipeline
+        run: python -m unittest discover -s tests -t .
+
+  javascript:
+    name: JS-Spiegel (Syntax + Parität)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Syntaxprüfung aller Module
+        run: |
+          for f in web/*.js web/raumwerk/*.js web/aufnahme/*.js; do
+            node --check "$f"
+          done
+      - name: Paritäts- und Geometrietests
+        run: |
+          node web/tests/pruefung.test.mjs
+          node web/tests/verbindung.test.mjs
