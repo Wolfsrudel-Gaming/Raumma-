@@ -89,6 +89,13 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
   Browser (three.js, `wolke3d.js`) anzeigen – samt Maßstab und Kontrollmaß aus
   dem Manifest. Alternativ eine PLY-Datei öffnen. Das schließt den Kreis von
   der Server-Verarbeitung zurück in den Betrachter.
+- **AR-Besprechung vor Ort** (`ar.js`) – am PC planen, dann auf der Baustelle
+  die geplanten Geräte-Klötzchen über das echte Kamerabild legen und mit dem
+  Kunden durchsprechen. Hauptweg ist ein **Magic-Window** (Kamera +
+  Geräteausrichtung, **ohne ARCore** – wichtig, weil ARCore auf dem gerooteten
+  Feldgerät unzuverlässig ist, §5); wo verfügbar, lässt sich auf **WebXR**-
+  Welttracking aufwerten. Braucht Kamera und einen sicheren Kontext
+  (localhost oder HTTPS).
 - **PDF-Report** – die gewählte Variante als druckbares Dokument, inklusive
   Maß-Herkunft und konservativer Rundungsregel.
 

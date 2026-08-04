@@ -319,6 +319,21 @@ function on3dSnap(modelRaum, nx, ny) {
   return echt ? einrasten(echt, nx, ny, raeume()) : [nx, ny];
 }
 
+// -------------------------------------------------------- AR
+
+/** AR-Besprechung: die aktive Variante im echten Raum überlagern. */
+async function arMitKunde() {
+  try {
+    const mod = await import("./ar.js");
+    await mod.starte({
+      raum: raum(), platzhalter: platzhalterAkt(), findeKomponente: finde,
+      onEnde: () => { /* zurück zur zuletzt aktiven Ansicht – DOM bleibt bestehen */ },
+    });
+  } catch (_) {
+    alert("AR konnte nicht gestartet werden (Kamera/WebGL nötig).");
+  }
+}
+
 // -------------------------------------------------- Pipeline / Wolke
 
 function renderPipeline() {
@@ -885,6 +900,7 @@ function verdrahteKopf() {
     else if (ansicht === "3d") modell3d?.resize();
     else wolke3d?.resize();
   };
+  $("btnAR").onclick = arMitKunde;
   $("btnExport").onclick = exportJson;
   $("btnImport").onclick = () => $("fileImport").click();
   $("fileImport").onchange = e => importJson(e.target.files[0]);
