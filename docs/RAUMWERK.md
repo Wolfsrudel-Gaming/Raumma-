@@ -124,6 +124,29 @@ starten. Ein Service Worker macht die Hülle offline-startbar („im Keller ohne
 Netz", §5); gesendet wird, sobald wieder Netz da ist. Es wird nichts vor Ort
 gerechnet – nur erfasst und hochgeladen (§6.1).
 
+### Plattformen: Web, PWA, native Apps
+
+Eine Codebasis, drei Auslieferungen:
+
+- **Web** – die App läuft im Browser (Kundenlink), nichts zu installieren.
+- **PWA** – dieselbe App ist **installierbar** (`web/raumwerk/manifest.webmanifest`
+  + Service Worker): auf Android und iOS „zum Startbildschirm hinzufügen" →
+  eigenständige App, offline-startbar (App-Hülle wird gecacht).
+- **Native Apps (Android + iOS)** – dünne Hüllen um dieselbe Web-App via
+  **Capacitor** (`native/`). Store-fähig, und Kamera/AR laufen ohne
+  HTTPS-Aufwand, weil die WebView ein sicherer Kontext ist. Wahlweise die
+  Web-App gebündelt (offline) oder eine gehostete Weboberfläche „live
+  verlinkt". Details: `native/README.md`.
+
+Damit ist das Konzept-Ziel „im Browser öffenbar, plattformübergreifend
+(Android zuerst, iOS später)" erfüllt – ohne Code zu doppeln.
+
+Hinweis zur Ausrichtung: RAUMWERK ist ein **allgemeines** Aufmaß-,
+Dokumentations- und Planungssystem (Räume, Messen, Varianten, 3D, Punktwolke,
+Verbindungen). Die **Elektro-Installationsplanung** (Einbauten mit Höhen,
+Estrich-Bezug, AR vor Ort) ist eine **Domäne** davon – die erste, weil sie den
+klarsten Nutzen zeigt, aber nicht die einzige.
+
 ### Verarbeitungs-Pipeline (Schicht ②, Gerüst)
 
 `pipeline/` – ein lauffähiges, getestetes Server-Gerüst (Python-Standard-

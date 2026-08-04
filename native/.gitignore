@@ -1,0 +1,7 @@
+# Von Capacitor / npm erzeugt – auf dem Entwickler-Rechner mit SDKs generiert.
+node_modules/
+www/
+android/
+ios/
+*.log
+.DS_Store

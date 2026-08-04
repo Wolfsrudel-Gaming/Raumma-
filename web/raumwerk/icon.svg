@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#17494d"/>
+  <!-- Grundriss-Andeutung: Raum mit Wandnummern-Kreis und Maßlinie -->
+  <rect x="96" y="120" width="320" height="230" rx="10" fill="none" stroke="#cfe8e9" stroke-width="18"/>
+  <rect x="96" y="120" width="150" height="120" fill="#2b7a78" opacity="0.55"/>
+  <circle cx="256" cy="235" r="30" fill="none" stroke="#5fd0c8" stroke-width="12"/>
+  <line x1="120" y1="392" x2="392" y2="392" stroke="#cfe8e9" stroke-width="10" stroke-linecap="round"/>
+  <line x1="120" y1="380" x2="120" y2="404" stroke="#cfe8e9" stroke-width="10"/>
+  <line x1="392" y1="380" x2="392" y2="404" stroke="#cfe8e9" stroke-width="10"/>
+  <text x="256" y="470" font-family="sans-serif" font-size="58" font-weight="800" fill="#cfe8e9" text-anchor="middle" letter-spacing="8">RW</text>
+</svg>

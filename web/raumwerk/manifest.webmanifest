@@ -1,0 +1,14 @@
+{
+  "name": "RAUMWERK – Aufmaß & Planung",
+  "short_name": "RAUMWERK",
+  "description": "Räume aufmessen, dokumentieren und planen – begehbar, vermessbar, normgeprüft. Eine Domäne davon ist die Elektro-Installationsplanung.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eef3f3",
+  "theme_color": "#17494d",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

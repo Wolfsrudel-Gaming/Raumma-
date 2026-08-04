@@ -29,6 +29,10 @@ gradle test                                   # Kern inkl. Normprüfung (38 Test
 cd web && python3 -m http.server 8099         # dann: http://localhost:8099/raumwerk/
 ```
 
+Dieselbe Web-App ist als **PWA installierbar** (Android/iOS „zum Startbildschirm")
+und lässt sich als **native App** (Android + iOS) über Capacitor bauen –
+eine Codebasis, siehe `native/`.
+
 Details, Konzept-Zuordnung und was bewusst noch fehlt: **[docs/RAUMWERK.md](docs/RAUMWERK.md)**.
 
 ---

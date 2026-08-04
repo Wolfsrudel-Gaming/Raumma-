@@ -986,3 +986,8 @@ const pos = (v, fallback) => { const n = parseFloat(v); return isFinite(n) && n 
 verdrahteKopf();
 render();
 requestAnimationFrame(() => plan.einpassen());
+
+// Als App installierbar machen (PWA) – die Hülle startet dann auch offline.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => { /* ohne SW läuft die App normal weiter */ });
+}
