@@ -1,0 +1,43 @@
+name: Android APK
+
+# Baut die RAUMWERK-Android-App (Debug-APK) auf einem GitHub-Runner, wo das
+# Android-SDK verfügbar ist, und legt die APK als Artefakt ab. Herunterladen
+# unter Actions → dieser Lauf → Artefakte → raumwerk-android-debug.
+on:
+  push:
+    paths:
+      - "android-app/**"
+      - "web/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+jobs:
+  apk:
+    name: Debug-APK bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android-SDK einrichten
+        uses: android-actions/setup-android@v3
+
+      - name: SDK-Komponenten
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: assembleDebug
+        working-directory: android-app
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: APK als Artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: raumwerk-android-debug
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

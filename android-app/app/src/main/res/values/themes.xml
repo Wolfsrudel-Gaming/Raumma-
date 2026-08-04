@@ -1,0 +1,9 @@
+<resources>
+    <!-- Dunkles Design, passend zum WERK-Skin der Web-App. -->
+    <style name="Theme.Raumwerk" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/nachtdunkel</item>
+        <item name="android:navigationBarColor">@color/nachtdunkel</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

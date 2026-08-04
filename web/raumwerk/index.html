@@ -13,6 +13,18 @@
   <meta name="apple-mobile-web-app-title" content="RAUMWERK">
   <link rel="apple-touch-icon" href="icon.svg">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Optionaler Skin (z. B. die Android-App lädt ?skin=werk für ihr eigenes
+    // Design). Wird nach styles.css eingehängt und überschreibt daher.
+    (function () {
+      var s = new URLSearchParams(location.search).get("skin");
+      if (!s || !/^[a-z0-9-]+$/.test(s)) return;
+      document.documentElement.setAttribute("data-skin", s);
+      var l = document.createElement("link");
+      l.rel = "stylesheet"; l.href = "skins/" + s + ".css";
+      document.head.appendChild(l);
+    })();
+  </script>
 </head>
 <body>
   <header class="appbar">

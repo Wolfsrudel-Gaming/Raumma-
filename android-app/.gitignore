@@ -1,0 +1,9 @@
+.gradle/
+build/
+app/build/
+# von der kopiereWeb-Task erzeugt (Web-App): nicht einchecken, wird beim Build gefüllt
+app/src/main/assets/
+local.properties
+*.iml
+.idea/
+.DS_Store

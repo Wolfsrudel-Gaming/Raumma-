@@ -1,0 +1,73 @@
+/*
+ * Skin „WERK" – das eigene Gesicht der Android-App.
+ *
+ * Bewusst ein anderes Design als die helle Standard-Weboberfläche: ein dunkles
+ * „Instrument", Blueprint-Anmutung, Bernstein-Akzent. Nur über
+ * `:root[data-skin="werk"]` aktiv, damit die Weboberfläche unberührt bleibt.
+ *
+ * Umgesetzt fast ausschließlich über die CSS-Variablen der Basis plus wenige
+ * gezielte Überschreibungen für den Plan (dunkler Hintergrund, helle Wände).
+ */
+
+:root[data-skin="werk"] {
+  --tk: #ffb020;            /* Bernstein – Akzent, aktive Zustände */
+  --tk-dunkel: #0a0f18;     /* fast schwarz – Kopfleiste */
+  --warn: #ff5d6c;
+  --warn-bg: #3a1d23;
+  --ok: #35d6a4;
+  --hint: #ffd166;
+  --rand: #2b374a;
+  --flaeche: #172130;      /* Panels */
+  --grund: #0e141f;        /* App-Hintergrund */
+  --text: #eaf1f8;
+  --grau: #8ea0b6;
+  --schatten: 0 2px 12px rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+
+/* Kopfleiste: Bernstein-Wortmarke, feine Linie darunter. */
+[data-skin="werk"] .appbar { border-bottom: 2px solid var(--tk); box-shadow: 0 2px 14px rgba(0,0,0,.6); }
+[data-skin="werk"] .marke { color: var(--tk); text-shadow: 0 0 14px rgba(255,176,32,.35); }
+[data-skin="werk"] .projekt-name { background: rgba(255,255,255,.06); }
+
+/* Panels & Überschriften auf Dunkel lesbar. */
+[data-skin="werk"] h2 { color: var(--tk); }
+[data-skin="werk"] .block { background: linear-gradient(180deg, #182333, #141d2b); }
+[data-skin="werk"] .insp-titel { color: var(--tk); }
+
+/* Eingaben dunkel. */
+[data-skin="werk"] input,
+[data-skin="werk"] select { background: #0d1420; color: var(--text); border-color: var(--rand); }
+[data-skin="werk"] input::placeholder { color: #5f7086; }
+
+/* Buttons: heller Rand, aktive/­Haupt-Flächen in Bernstein mit dunkler Schrift. */
+[data-skin="werk"] button { background: #131c2a; color: var(--text); }
+[data-skin="werk"] button:hover { border-color: var(--tk); }
+[data-skin="werk"] button.haupt,
+[data-skin="werk"] .werkzeug.aktiv,
+[data-skin="werk"] .chip.aktiv,
+[data-skin="werk"] .palette-knopf.aktiv,
+[data-skin="werk"] .ansicht-wahl .werkzeug.aktiv { background: var(--tk); color: #10151f; border-color: var(--tk); font-weight: 700; }
+[data-skin="werk"] .palette-knopf.aktiv small { color: #3a2e10; }
+
+/* Plan: dunkle Bühne, helle Wände, Bernstein-Wandnummern, feines Raster. */
+[data-skin="werk"] .plan-wrap { background: #0b111b; }
+[data-skin="werk"] .raster line { stroke: #1b2740; }
+[data-skin="werk"] .wand line { stroke: #dfe8f4; }
+[data-skin="werk"] .boden { opacity: .3; }
+[data-skin="werk"] .wandnr-kreis { fill: #0e141f; stroke: var(--tk); }
+[data-skin="werk"] .wandnr { fill: var(--tk); }
+[data-skin="werk"] .klotz-box { fill: #33465f; stroke: #c9d6e6; }
+[data-skin="werk"] .klotz.aktiv .klotz-box { fill: #4a648a; stroke: var(--tk); }
+[data-skin="werk"] .klotz-front { stroke: #dfe8f4; }
+[data-skin="werk"] .klotz-text { fill: #eaf1f8; }
+[data-skin="werk"] .mess-text { fill: #fff; stroke: #0b111b; }
+[data-skin="werk"] .plan-fuss { background: rgba(0,0,0,.55); color: #aeb9c9; }
+
+/* Badges / Befunde tragen den dunklen Ton. */
+[data-skin="werk"] .badge.gut { background: #12332a; color: var(--ok); }
+[data-skin="werk"] .befund.ok { border-color: #24405a; }
+[data-skin="werk"] .var-tabelle tr.aktiv { background: #17273a; }
+[data-skin="werk"] .var-tabelle tr.aktiv .raum-wahl { color: var(--tk); }
+[data-skin="werk"] .raum-zeile.aktiv { background: #17273a; }
+[data-skin="werk"] .raum-zeile.aktiv .raum-wahl { color: var(--tk); }
