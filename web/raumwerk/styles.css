@@ -149,6 +149,17 @@ svg.plan[hidden] { display: none; }   /* schlägt die display-Regel, sonst bleib
 .anlegen-knoepfe { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .anlegen-knoepfe button { font-size: 12px; }
 
+/* Verbindungen-Panel */
+.vb-zeile { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 4px 2px; border-bottom: 1px solid #eef2f2; }
+.vb-zeile span { flex: 1; }
+.vb-zeile em { color: var(--warn); font-style: normal; font-size: 11px; }
+.vb-neu { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12.5px; }
+.vb-neu span { flex: 1; }
+
+/* Türen im Gebäude-Bild */
+.gtuer-lueck { stroke: #d98324; stroke-width: 5; stroke-linecap: round; }
+.gtuer-punkt { fill: #fff; stroke: #d98324; stroke-width: 1.5; }
+
 /* Gebäude-Übersicht (SVG) */
 .graum polygon { stroke: #16302f; stroke-width: 2; opacity: .85; cursor: grab; }
 .graum.aktiv polygon { stroke: var(--tk); stroke-width: 3.5; opacity: 1; }

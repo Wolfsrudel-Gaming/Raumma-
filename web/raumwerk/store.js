@@ -73,6 +73,9 @@ export function beispielProjekt() {
       { id: neueId("foto"), raumId, relX: 0.28, relY: 0.9, titel: "Zählerschrank – Typenschild",
         datenUrl: BEISPIEL_FOTO, notiz: "Zählernummer und Nennstrom ablesbar." }
     ],
+    verbindungen: [
+      { id: neueId("vb"), raumA: raumId, raumB: lagerId, art: "DURCHGANG", breiteM: 0.9 }
+    ],
     varianten: [
       { id: neueId("var"), name: "Variante A", platzhalter: [
         { id: neueId("ph"), raumId, komponente: "ZAEHLERSCHRANK",
@@ -121,6 +124,7 @@ function migriere(p) {
   p.oeffnungen ??= [];
   p.einbauten ??= [];
   p.fotos ??= [];
+  p.verbindungen ??= [];
   p.varianten ??= [{ id: neueId("var"), name: "Variante A", platzhalter: [] }];
   p.aktiveVariante ??= 0;
   if (p.aktiveVariante >= p.varianten.length) p.aktiveVariante = 0;

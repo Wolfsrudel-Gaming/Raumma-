@@ -18,6 +18,7 @@ import { KATALOG, Kategorie, finde } from "../komponenten.js";
 import { pruefe } from "../pruefung.js";
 import * as Normmasse from "../normmasse.js";
 import { anlegen, einrasten, Seite } from "../platzierung.js";
+import * as Verbindung from "./verbindung.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -58,6 +59,11 @@ function einbautenAkt() { const id = raum().id; return projekt.einbauten.filter(
 function fotosAkt() { const id = raum().id; return projekt.fotos.filter(f => f.raumId === id); }
 function platzhalterAkt() { const id = raum().id; return platzhalter().filter(p => p.raumId === id); }
 
+// Aus den Verbindungen abgeleitete Öffnungen (gemeinsame Türen/Durchgänge).
+function tuerOeffnungenAlle() { return projekt.verbindungen.flatMap(v => Verbindung.oeffnungen(v, raeume())); }
+function tuerOeffnungenRaum(id) { return tuerOeffnungenAlle().filter(o => o.raumId === id); }
+function tuerMarken() { return projekt.verbindungen.map(v => Verbindung.marke(v, raeume())).filter(Boolean); }
+
 function gewaehltPlatzhalter() { return auswahl?.typ === "platzhalter" ? platzhalter().find(p => p.id === auswahl.id) : null; }
 function gewaehltEinbau() { return auswahl?.typ === "einbau" ? projekt.einbauten.find(e => e.id === auswahl.id) : null; }
 function palettenLeeren() { paletteWahl = null; einbauWahl = null; }
@@ -72,16 +78,17 @@ function render() {
   pruefenJetzt();
   if (ansicht === "raum") {
     plan.setModell({
-      raum: raum(), oeffnungen: oeffnungenAkt(), einbauten: einbautenAkt(),
-      platzhalter: platzhalterAkt(), fotos: fotosAkt(), befunde, auswahl
+      raum: raum(), oeffnungen: oeffnungenAkt().concat(tuerOeffnungenRaum(raum().id)),
+      einbauten: einbautenAkt(), platzhalter: platzhalterAkt(), fotos: fotosAkt(), befunde, auswahl
     }).zeichne();
-  } else {
-    gebaeude.setModell({ raeume: raeume(), geschoss: raum().geschoss, aktivId: raum().id }).zeichne();
+  } else if (ansicht === "gebaeude") {
+    gebaeude.setModell({ raeume: raeume(), geschoss: raum().geschoss, aktivId: raum().id, tueren: tuerMarken() }).zeichne();
   }
   renderKopf();
   renderRaeume();
   renderRaum();
   renderOeffnungen();
+  renderVerbindungen();
   renderPalette();
   renderEinbauPalette();
   renderFotos();
@@ -272,7 +279,7 @@ function raeumeFuer3d() {
     id: r.id, name: r.name, number: r.nummer, floor: r.geschoss,
     corners: G.ecken(r), posX: Number(r.xM) || 0, posY: Number(r.yM) || 0,
     rotationDeg: Number(r.drehungGrad) || 0, heightM: Number(r.hoeheM) || 2.5, color: r.farbe,
-    openings: projekt.oeffnungen.filter(o => o.raumId === r.id).map(o => ({
+    openings: projekt.oeffnungen.filter(o => o.raumId === r.id).concat(tuerOeffnungenRaum(r.id)).map(o => ({
       wallIndex: o.wandIndex ?? 0, offsetM: Number(o.abstandM) || 0, widthM: Number(o.breiteM) || 0,
       sillM: Number(o.bruestungM) || 0, heightM: Number(o.hoeheM) || 0
     })),
@@ -589,6 +596,49 @@ function renderOeffnungen() {
     projekt.oeffnungen.push({ id: Store.neueId("oef"), raumId: raum().id, art: "TUER", wandIndex: 0, abstandM: 0.5, breiteM: 0.885, hoeheM: 2.01, bruestungM: 0 });
     render();
   };
+}
+
+// ----------------------------------------------------- Verbindungen
+
+function renderVerbindungen() {
+  const panel = $("panelVerbindungen");
+  const akt = raum();
+  const meine = projekt.verbindungen.filter(v => v.raumA === akt.id || v.raumB === akt.id);
+  const schon = new Set(meine.map(v => (v.raumA === akt.id ? v.raumB : v.raumA)));
+  const offen = Verbindung.nachbarn(akt, raeume()).filter(n => !schon.has(n.raum.id));
+
+  const liste = meine.map(v => {
+    const anderer = raeume().find(r => r.id === (v.raumA === akt.id ? v.raumB : v.raumA));
+    const gilt = Verbindung.marke(v, raeume());
+    return `<div class="vb-zeile" data-vb="${v.id}">
+      <span>${v.art === "TUER" ? "Tür" : "Durchgang"} → ${esc(anderer ? anderer.name : "?")}${gilt ? "" : ` <em>(getrennt)</em>`}</span>
+      <button class="weg" title="entfernen">✕</button></div>`;
+  }).join("");
+
+  const neu = offen.map(n => `<div class="vb-neu"><span>${esc(n.raum.name)}</span>
+    <button class="mini" data-tuer="${n.raum.id}">+ Tür</button>
+    <button class="mini" data-durch="${n.raum.id}">+ Durchgang</button></div>`).join("");
+
+  panel.innerHTML = (liste || `<p class="leer">Keine Verbindungen von „${esc(akt.name)}".</p>`)
+    + (neu ? `<div class="feld" style="margin-top:8px"><label>Angrenzende Räume</label>${neu}</div>` : "")
+    + (!meine.length && !offen.length ? `<p class="hint">Keine angrenzenden Räume – in der Gebäude-Ansicht Räume aneinanderschieben.</p>` : "");
+
+  panel.querySelectorAll("[data-vb]").forEach(z =>
+    z.querySelector(".weg").onclick = () => {
+      const id = z.getAttribute("data-vb");
+      projekt.verbindungen = projekt.verbindungen.filter(v => v.id !== id);
+      render();
+    });
+  panel.querySelectorAll("[data-tuer]").forEach(b => b.onclick = () => verbindungAnlegen(b.getAttribute("data-tuer"), "TUER"));
+  panel.querySelectorAll("[data-durch]").forEach(b => b.onclick = () => verbindungAnlegen(b.getAttribute("data-durch"), "DURCHGANG"));
+}
+
+function verbindungAnlegen(nachbarId, art) {
+  projekt.verbindungen.push({
+    id: Store.neueId("vb"), raumA: raum().id, raumB: nachbarId,
+    art, breiteM: art === "TUER" ? 0.885 : 1.0,
+  });
+  render();
 }
 
 // ------------------------------------------------------------ Palette

@@ -16,7 +16,7 @@ export class Gebaeude {
   constructor(svg, rueckrufe = {}) {
     this.svg = svg;
     this.cb = rueckrufe;
-    this.modell = { raeume: [], geschoss: 0, aktivId: null };
+    this.modell = { raeume: [], geschoss: 0, aktivId: null, tueren: [] };
     this.scale = 40; this.ox = 40; this.oy = 40;
     this.zieh = null;
     this._zeiger();
@@ -74,6 +74,17 @@ export class Gebaeude {
         <text class="graum-name" x="${mitte[0]}" y="${mitte[1] - 4}" text-anchor="middle">${esc(r.name)}${r.nummer ? ` · ${esc(r.nummer)}` : ""}</text>
         <text class="graum-mass" x="${mitte[0]}" y="${mitte[1] + 12}" text-anchor="middle">${flaeche} m²</text>
       </g>`);
+    }
+    for (const t of this.modell.tueren) {
+      const a = this.nachSchirm(t.cx, t.cy);
+      const halb = (t.breiteM / 2) * this.scale;
+      // Ein helles Stück quer über die gemeinsame Wand = die Öffnung.
+      const [x1, y1, x2, y2] = t.senkrecht
+        ? [a[0], a[1] - halb, a[0], a[1] + halb]
+        : [a[0] - halb, a[1], a[0] + halb, a[1]];
+      teile.push(`<g class="gtuer">`
+        + `<line class="gtuer-lueck" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`
+        + `<circle class="gtuer-punkt" cx="${a[0]}" cy="${a[1]}" r="3.5"/></g>`);
     }
     this.svg.innerHTML = teile.join("");
   }
