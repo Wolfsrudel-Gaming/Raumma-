@@ -1,0 +1,14 @@
+{
+  "name": "RAUMWERK Aufnahme",
+  "short_name": "Aufnahme",
+  "description": "Vor-Ort-Erfassung für RAUMWERK: Fotos, Lasermaße und Objekt-Tags an die Verarbeitungs-Pipeline senden.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef3f3",
+  "theme_color": "#17494d",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

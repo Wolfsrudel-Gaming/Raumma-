@@ -17,7 +17,7 @@ Seitenzweig:
 
 | Schicht | Konzept | Stand in diesem Repo |
 |---|---|---|
-| ① Erfassung (Feld) | Eigene App: Video/Foto/IMU/Laser/Tags | offen (Hardware/App-Phase) |
+| ① Erfassung (Feld) | Eigene App: Foto/Laser/Tags → Pipeline | **Skelett gebaut** (`web/aufnahme/`, PWA) |
 | ② Verarbeitung (Server-CPU) | COLMAP → OpenMVS → Maß-Solver → Semantik | **Gerüst gebaut** (`pipeline/`) |
 | **③ Viewer & Planung (Browser)** | **Messen · Klötzchen mit Abstandsprüfung · Varianten · Report** | **gebaut** (`web/raumwerk/`) |
 | ✦ Fotorealismus (GPU-Burst) | Gaussian Splatting, nur bei Bedarf | offen (optional) |
@@ -91,6 +91,16 @@ gradle test        # 38 Tests, u. a. 11 für die Normprüfung
 Persistenz über `localStorage` – kein Server nötig, offline- und
 kundenlink-tauglich, wie im Konzept vorgesehen.
 
+### Aufnahme-App (Schicht ①, Skelett)
+
+`web/aufnahme/` – eine schlanke, installierbare **PWA** für die Erfassung vor
+Ort: Fotos über die Kamera (`getUserMedia`), **Lasermaße** manuell eintippen
+(ein Bluetooth-Laser kann sie später liefern, §18) und Objekte **taggen**. Ein
+Klick sendet alles an die Pipeline – Auftrag anlegen → Bilder hochladen →
+starten. Ein Service Worker macht die Hülle offline-startbar („im Keller ohne
+Netz", §5); gesendet wird, sobald wieder Netz da ist. Es wird nichts vor Ort
+gerechnet – nur erfasst und hochgeladen (§6.1).
+
 ### Verarbeitungs-Pipeline (Schicht ②, Gerüst)
 
 `pipeline/` – ein lauffähiges, getestetes Server-Gerüst (Python-Standard-
@@ -159,9 +169,9 @@ Werte wurden gegeneinander geprüft (identische Ergebnisse für alle Testfälle)
 
 Ehrlichkeit über die Grenzen, wie im Konzept:
 
-- **Erfassung** (Schicht ①) – die eigene Capture-App (Video/Foto/IMU/Laser).
-  Hardware-/App-Phase; die Browser-Planung arbeitet bis dahin auf dem manuell
-  erfassten Grundriss (Kurzform oder Polygonzug).
+- **Erfassung** (Schicht ①) – die Aufnahme-**PWA** steht (`web/aufnahme/`:
+  Foto/Laser/Tags → Pipeline); offen bleiben Video-/IMU-Erfassung und die
+  Anbindung eines echten Bluetooth-Lasers.
 - **Echte Photogrammetrie** (Schicht ②) – das Pipeline-**Gerüst** steht
   (`pipeline/`), aber COLMAP/OpenMVS sind noch nicht angebunden (läuft im
   Simulationsmodus); der Maß-Solver rechnet bereits echt.

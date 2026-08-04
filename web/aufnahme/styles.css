@@ -1,0 +1,69 @@
+/* RAUMWERK · Aufnahme – mobil zuerst, große Ziele fürs Feld. */
+:root {
+  --tk: #2b7a78; --tk-dunkel: #17494d; --warn: #c0392b; --ok: #2e8b57;
+  --rand: #d6e0e0; --flaeche: #fff; --grund: #eef3f3; --text: #1d2a2a; --grau: #667575;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font: 15px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--grund); }
+
+.kopf {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--tk-dunkel); color: #fff;
+  padding-top: calc(10px + env(safe-area-inset-top));
+}
+.marke { font-weight: 800; letter-spacing: .2em; font-size: 14px; }
+.kopf-titel { font-weight: 600; }
+.schicht { font-size: 11px; opacity: .8; font-weight: 400; }
+.netz { margin-left: auto; font-size: 12px; background: rgba(255,255,255,.15); padding: 3px 9px; border-radius: 12px; }
+.netz.aus { background: var(--warn); }
+
+.inhalt { max-width: 640px; margin: 0 auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.karte { background: var(--flaeche); border: 1px solid var(--rand); border-radius: 12px; padding: 14px; }
+.karte h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--tk-dunkel); margin: 0 0 10px; }
+.hint { font-size: 12.5px; color: var(--grau); margin: 0 0 10px; }
+.leer { font-size: 13px; color: var(--grau); }
+
+.feld { display: block; margin-bottom: 10px; }
+.feld span { display: block; font-size: 12px; color: var(--grau); margin-bottom: 3px; }
+input { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--rand); border-radius: 8px; background: #fff; color: var(--text); }
+input:focus { outline: 2px solid rgba(43,122,120,.35); border-color: var(--tk); }
+
+button.knopf { font: inherit; border: 1px solid var(--rand); background: #fff; color: var(--text); border-radius: 10px; padding: 12px 16px; cursor: pointer; }
+button.knopf.haupt { background: var(--tk); color: #fff; border-color: var(--tk); font-weight: 600; }
+button.knopf.gross { width: 100%; background: var(--tk); color: #fff; border-color: var(--tk); font-weight: 700; font-size: 16px; padding: 15px; }
+button.knopf:disabled { opacity: .45; cursor: default; }
+.knopf-reihe { display: flex; gap: 8px; margin-top: 10px; }
+.knopf-reihe .knopf { flex: 1; }
+
+.video-rahmen { position: relative; background: #0f1615; border-radius: 10px; overflow: hidden; aspect-ratio: 4/3; display: grid; place-items: center; }
+video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-hinweis { position: absolute; color: #9fb3b3; font-size: 13px; padding: 12px; text-align: center; }
+
+.galerie { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-top: 10px; }
+.mini { position: relative; margin: 0; aspect-ratio: 4/3; border-radius: 8px; overflow: hidden; border: 1px solid var(--rand); }
+.mini img { width: 100%; height: 100%; object-fit: cover; }
+.mini-weg { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+
+.laser-zeile { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+.laser-zeile .l-von, .laser-zeile .l-bis { flex: 1.3; }
+.laser-zeile .l-m { flex: 1; }
+.laser-zeile .mini-weg { position: static; background: var(--warn); flex: 0 0 auto; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; padding: 7px 11px; border: 1px solid var(--rand); border-radius: 16px; background: #fff; color: var(--text); cursor: pointer; }
+.chip.aktiv { background: var(--tk); color: #fff; border-color: var(--tk); }
+.tag-liste { font-size: 12.5px; color: var(--grau); margin-top: 8px; }
+
+.aktion { position: sticky; bottom: 0; }
+.status { margin-top: 10px; font-size: 13px; min-height: 1.2em; }
+.status.gut { color: var(--ok); }
+.status.fehler { color: var(--warn); }
+.status code { background: #eef2f2; padding: 1px 6px; border-radius: 5px; }
+.status a { color: var(--tk); }
+
+@media (prefers-color-scheme: dark) {
+  :root { --rand: #33403f; --flaeche: #1a2322; --grund: #121918; --text: #e6eeee; --grau: #93a3a3; }
+  input, button.knopf { background: #202b2a; color: var(--text); }
+  .status code { background: #202b2a; }
+}

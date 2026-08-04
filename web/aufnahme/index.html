@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17494d">
+  <title>RAUMWERK · Aufnahme</title>
+  <link rel="icon" href="icon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="kopf">
+    <div class="marke">RAUMWERK</div>
+    <div class="kopf-titel">Aufnahme <span class="schicht">Schicht ①</span></div>
+    <div id="netz" class="netz">online</div>
+  </header>
+
+  <main class="inhalt">
+    <section class="karte">
+      <h2>Auftrag</h2>
+      <label class="feld"><span>Name / Objekt</span>
+        <input id="auftragName" placeholder="z. B. Technikraum Musterstraße 1">
+      </label>
+      <label class="feld"><span>Pipeline-Server</span>
+        <input id="pipUrl" placeholder="http://localhost:8781">
+      </label>
+    </section>
+
+    <section class="karte">
+      <h2>Kamera</h2>
+      <div class="video-rahmen">
+        <video id="video" playsinline muted></video>
+        <div id="videoHinweis" class="video-hinweis">Kamera aus – „Kamera starten" antippen</div>
+      </div>
+      <div class="knopf-reihe">
+        <button id="btnKamera" class="knopf">Kamera starten</button>
+        <button id="btnFoto" class="knopf haupt" disabled>Foto aufnehmen</button>
+      </div>
+      <div id="galerie" class="galerie"></div>
+    </section>
+
+    <section class="karte">
+      <h2>Lasermaße</h2>
+      <p class="hint">Echte mm-Ankermaße. Manuell eintippen – ein Bluetooth-Laser kann sie später automatisch liefern. Für den Maßstab mindestens zwei Maße, ein weiteres als Kontrollmaß.</p>
+      <div id="laserListe"></div>
+      <button id="btnLaser" class="knopf">+ Maß</button>
+    </section>
+
+    <section class="karte">
+      <h2>Objekte taggen</h2>
+      <p class="hint">Was ist im Bild? Die Zuordnung hilft dem Server, echte Maße zu ergänzen.</p>
+      <div id="tagPalette" class="chips"></div>
+      <div id="tagListe" class="tag-liste"></div>
+    </section>
+
+    <section class="karte aktion">
+      <button id="btnSenden" class="knopf gross">An Pipeline senden</button>
+      <div id="status" class="status"></div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
