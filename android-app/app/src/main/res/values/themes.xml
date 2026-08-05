@@ -1,9 +1,9 @@
 <resources>
-    <!-- Dunkles Design, passend zum WERK-Skin der Web-App. -->
-    <style name="Theme.Raumwerk" parent="@android:style/Theme.Material.NoActionBar">
+    <!-- Rustikales Backstein-Design, passend zum ZIEGEL-Skin der Web-App. -->
+    <style name="Theme.Raumwerk" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash</item>
-        <item name="android:statusBarColor">@color/nachtdunkel</item>
-        <item name="android:navigationBarColor">@color/nachtdunkel</item>
+        <item name="android:statusBarColor">@color/backstein</item>
+        <item name="android:navigationBarColor">@color/backstein_dunkel</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

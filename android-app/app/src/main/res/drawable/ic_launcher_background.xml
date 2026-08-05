@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Backsteinmauer (Läuferverband): Terrakotta mit hellen Mörtelfugen. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#0E141F" android:pathData="M0,0h108v108h-108z" />
-    <!-- feines Blueprint-Raster -->
-    <path android:strokeColor="#1B2740" android:strokeWidth="0.6"
-        android:pathData="M18,0V108 M36,0V108 M54,0V108 M72,0V108 M90,0V108 M0,18H108 M0,36H108 M0,54H108 M0,72H108 M0,90H108" />
+    <path android:fillColor="#B5502F" android:pathData="M0,0h108v108h-108z" />
+    <!-- waagerechte Mörtelfugen -->
+    <path android:strokeColor="#DDBB9C" android:strokeWidth="2.4"
+        android:pathData="M0,27H108 M0,54H108 M0,81H108" />
+    <!-- senkrechte Fugen, versetzt je Reihe -->
+    <path android:strokeColor="#DDBB9C" android:strokeWidth="2.4"
+        android:pathData="M36,0V27 M72,0V27 M18,27V54 M54,27V54 M90,27V54 M36,54V81 M72,54V81 M18,81V108 M54,81V108 M90,81V108" />
 </vector>

@@ -11,6 +11,9 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     name: Debug-APK bauen
@@ -41,3 +44,24 @@ jobs:
           name: raumwerk-android-debug
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # Die fertige APK zusätzlich auf den Branch `apk` legen – so lässt sie
+      # sich per git (statt nur über die Artefakt-Oberfläche) beziehen.
+      - name: APK auf apk-Branch veröffentlichen
+        run: |
+          set -e
+          APK="$GITHUB_WORKSPACE/android-app/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          repo="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          tmp="$RUNNER_TEMP/apkpub"; rm -rf "$tmp"
+          if git clone --depth 1 --branch apk "$repo" "$tmp" 2>/dev/null; then
+            cd "$tmp"
+          else
+            git clone --depth 1 "$repo" "$tmp"; cd "$tmp"; git checkout --orphan apk
+          fi
+          find . -maxdepth 1 ! -name .git ! -name . -exec rm -rf {} +
+          cp "$APK" raumwerk-ziegel.apk
+          printf 'RAUMWERK Android (Ziegel-Design)\nCommit: %s\nGebaut: %s UTC\n' "$GITHUB_SHA" "$(date -u '+%Y-%m-%d %H:%M')" > BUILD.txt
+          git add -A
+          git -c user.name=raumwerk-ci -c user.email=ci@raumwerk commit -m "APK ${GITHUB_SHA::7}"
+          git push -f "$repo" HEAD:apk

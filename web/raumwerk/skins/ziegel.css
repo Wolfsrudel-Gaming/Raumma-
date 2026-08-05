@@ -1,0 +1,70 @@
+/*
+ * Skin „ZIEGEL" – das Gesicht der Android-App: rustikal, Backstein.
+ *
+ * Warmes Sand/Creme, Terrakotta-Akzent, dunkles Backstein-Braun; die Kopfleiste
+ * trägt ein Ziegelmauer-Muster. Bewusst handwerklich-warm statt technisch-kühl.
+ * Nur über `:root[data-skin="ziegel"]` aktiv, die Weboberfläche bleibt unberührt.
+ */
+
+:root[data-skin="ziegel"] {
+  --tk: #b5502f;            /* Terrakotta – Akzent, aktive Zustände */
+  --tk-dunkel: #5c2a1c;     /* dunkler Backstein – Kopf, Überschriften */
+  --warn: #b23a2e;
+  --warn-bg: #f6e0da;
+  --ok: #6f7d3a;            /* Moosgrün – bleibt erdig */
+  --hint: #a9761f;          /* Ocker */
+  --rand: #d8c3a8;          /* Ton */
+  --flaeche: #fbf4e9;       /* Creme – Panels */
+  --grund: #efe4d4;         /* warmer Sand – Hintergrund */
+  --text: #3c2a1e;          /* dunkles Braun */
+  --grau: #8a7358;          /* warmes Taupe */
+  --schatten: 0 1px 3px rgba(60, 40, 20, .18);
+  color-scheme: light;
+}
+
+/* Kopfleiste als Ziegelmauer. */
+[data-skin="ziegel"] .appbar {
+  background-color: #7a3625;
+  background-image:
+    repeating-linear-gradient(0deg, #6e3021 0, #6e3021 24px, #cba488 24px, #cba488 27px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 58px, #cba488 58px, #cba488 61px);
+  color: #f7ede1;
+  border-bottom: 3px solid #43200f;
+  box-shadow: inset 0 -2px 6px rgba(0, 0, 0, .25);
+}
+[data-skin="ziegel"] .marke { color: #f7ede1; letter-spacing: .2em; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+[data-skin="ziegel"] .projekt-name { background: rgba(255, 255, 255, .16); color: #fff; }
+
+/* Panels warm, Überschriften Backstein. */
+[data-skin="ziegel"] .block { background: var(--flaeche); border-color: #e0cdb2; }
+[data-skin="ziegel"] h2 { color: var(--tk-dunkel); }
+[data-skin="ziegel"] .insp-titel { color: var(--tk-dunkel); }
+
+/* Buttons: heller Rahmen, aktive/Haupt-Flächen Terrakotta mit heller Schrift. */
+[data-skin="ziegel"] button.haupt,
+[data-skin="ziegel"] .werkzeug.aktiv,
+[data-skin="ziegel"] .chip.aktiv,
+[data-skin="ziegel"] .palette-knopf.aktiv,
+[data-skin="ziegel"] .ansicht-wahl .werkzeug.aktiv { background: var(--tk); color: #fdf1e7; border-color: var(--tk); font-weight: 700; }
+[data-skin="ziegel"] .palette-knopf.aktiv small { color: #f3d9c8; }
+[data-skin="ziegel"] button:hover { border-color: var(--tk); }
+
+/* Plan: warme Bühne, dunkle Backstein-Wände, Terrakotta-Nummern. */
+[data-skin="ziegel"] .plan-wrap { background: #e7d8c2; }
+[data-skin="ziegel"] .raster line { stroke: #d3bfa4; }
+[data-skin="ziegel"] .wand line { stroke: #5a3020; stroke-width: 4.5; }
+[data-skin="ziegel"] .wandnr-kreis { fill: #fbf4e9; stroke: var(--tk); }
+[data-skin="ziegel"] .wandnr { fill: var(--tk-dunkel); }
+[data-skin="ziegel"] .klotz-box { fill: #d9c3a3; stroke: #6b4029; }
+[data-skin="ziegel"] .klotz.aktiv .klotz-box { fill: #e7b892; stroke: var(--tk); }
+[data-skin="ziegel"] .klotz-front { stroke: #5a3020; }
+[data-skin="ziegel"] .klotz-text { fill: #3c2a1e; }
+[data-skin="ziegel"] .mess-text { fill: #3c2a1e; stroke: #efe4d4; }
+[data-skin="ziegel"] .plan-fuss { background: rgba(90, 48, 32, .82); color: #f3e7d7; }
+
+/* Badges/Auswahl im warmen Ton. */
+[data-skin="ziegel"] .badge.gut { background: #e7ecd2; color: var(--ok); }
+[data-skin="ziegel"] .var-tabelle tr.aktiv,
+[data-skin="ziegel"] .raum-zeile.aktiv { background: #f3e3d0; }
+[data-skin="ziegel"] .var-tabelle tr.aktiv .raum-wahl,
+[data-skin="ziegel"] .raum-zeile.aktiv .raum-wahl { color: var(--tk-dunkel); }

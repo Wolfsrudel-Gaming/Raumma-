@@ -22,8 +22,8 @@ import androidx.webkit.WebViewClientCompat
  * die ES-Module und nur so ist es ein sicherer Kontext, in dem Kamera und
  * Sensoren (AR) laufen. Kein Netz nötig; die Pipeline-Anbindung bleibt optional.
  *
- * Das eigene Design zieht die App über `?skin=werk` – ein dunkles Instrument-
- * Design, das sich klar von der hellen Weboberfläche unterscheidet.
+ * Das eigene Design zieht die App über `?skin=ziegel` – ein rustikaler
+ * Backstein-Look, der sich klar von der hellen Weboberfläche unterscheidet.
  */
 class MainActivity : Activity() {
 
@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         }
         setContentView(web)
 
-        web.loadUrl("https://appassets.androidplatform.net/raumwerk/index.html?skin=werk")
+        web.loadUrl("https://appassets.androidplatform.net/raumwerk/index.html?skin=ziegel")
     }
 
     override fun onBackPressed() {

@@ -1,6 +1,7 @@
 <resources>
-    <color name="nachtdunkel">#FF0A0F18</color>
-    <color name="grund">#FF0E141F</color>
-    <color name="bernstein">#FFFFB020</color>
-    <color name="text">#FFEAF1F8</color>
+    <color name="backstein_dunkel">#FF43200F</color>
+    <color name="backstein">#FF7A3625</color>
+    <color name="sand">#FFEFE4D4</color>
+    <color name="terrakotta">#FFB5502F</color>
+    <color name="creme">#FFF7EDE1</color>
 </resources>
