@@ -4,9 +4,14 @@ Eine **eigenständige Android-App**, die die RAUMWERK-Web-App **offline** aus
 gebündelten Assets lädt – über einen virtuellen HTTPS-Origin
 (`WebViewAssetLoader`), damit ES-Module und Kamera/AR funktionieren.
 
-Sie trägt ein **eigenes, rustikales Backstein-Design** (Skin `ziegel`), das sich
-klar von der hellen Weboberfläche abhebt: eine kachelnde Ziegelmauer als Bühne,
-Pergament-Panels, Keramik-Namensschild, Tonkachel-Schaltflächen.
+Sie lädt **nicht** die Desktop-Seite im Kleinen, sondern eine **eigenständige,
+für das Smartphone gebaute Oberfläche** (`web/raumwerk/mobil/`): eine Ansicht
+zur Zeit, feste Kopfleiste, **Tab-Leiste unten** im Daumenbereich (Räume · Plan ·
+Scan · 3D · Prüfung), Bearbeiten über **hochziehbare Sheets**, große Touch-Ziele,
+FAB. Backstein bleibt als warmer Akzent in der Kopfleiste; die Arbeitsflächen
+sind ruhig und hell. Dieselbe erprobte Fachlogik (Store, Geometrie, Normen,
+Plan, 3D, Scan) wie die PC-Ansicht liegt darunter – die PC-Planung bleibt unter
+`raumwerk/index.html` erreichbar.
 
 - **Offline:** alles ist eingebettet; kein Server nötig (die Pipeline-Anbindung
   bleibt optional). localStorage speichert die Projekte.

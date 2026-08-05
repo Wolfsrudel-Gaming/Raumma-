@@ -69,7 +69,9 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(bruecke, "AndroidNative")
         setContentView(web)
 
-        web.loadUrl("https://appassets.androidplatform.net/raumwerk/index.html?skin=ziegel")
+        // Eigenständige, für das Smartphone gebaute Oberfläche (nicht die
+        // Desktop-Seite im Kleinen). Die PC-Ansicht bleibt unter raumwerk/.
+        web.loadUrl("https://appassets.androidplatform.net/raumwerk/mobil/index.html")
     }
 
     private fun rechteAnfragen() {

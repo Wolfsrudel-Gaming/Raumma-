@@ -1,0 +1,253 @@
+/*
+ * RAUMWERK · Mobile-App – eigenständige, für den Daumen gebaute Oberfläche.
+ *
+ * Kein Desktop-Layout im Kleinen: eine Bildschirmansicht zur Zeit, feste
+ * Kopfleiste, Tab-Leiste unten im Daumenbereich, Bearbeiten über hochziehbare
+ * Sheets, große Touch-Ziele. Backstein bleibt als warmer Akzent (Kopfleiste),
+ * die Arbeitsflächen sind ruhig und hell.
+ */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root {
+  --papier: #f4efe6;
+  --karte: #fffdf9;
+  --tinte: #33261c;
+  --sanft: #8a7862;
+  --tk: #b5502f;
+  --tk-d: #8f3c1f;
+  --linie: #e9dfce;
+  --ok: #5f8039;
+  --warn: #c0432b;
+  --amber: #c98a2b;
+  --schatten: 0 2px 12px rgba(60, 35, 15, .10);
+  --sheet-schatten: 0 -8px 30px rgba(40, 22, 10, .28);
+  --kopf: 56px;
+  --tabs: 62px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
+html, body { margin: 0; height: 100%; overscroll-behavior: none; }
+body {
+  font: 16px/1.4 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  color: var(--tinte);
+  background: var(--papier);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+
+#app { display: flex; flex-direction: column; height: 100%; }
+
+/* ------------------------------------------------------------ Kopfleiste */
+.kopf {
+  height: calc(var(--kopf) + var(--sat));
+  padding-top: var(--sat);
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px;
+  padding-left: 12px; padding-right: 12px;
+  background-color: #7a3624;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='34' viewBox='0 0 60 34'><rect width='60' height='34' fill='%23a9895f'/><rect x='2' y='2' width='56' height='13' rx='1.5' fill='%236e2f1d'/><rect x='-28' y='18' width='56' height='13' rx='1.5' fill='%235f2818'/><rect x='32' y='18' width='56' height='13' rx='1.5' fill='%235f2818'/></svg>");
+  color: #f7ede1;
+  box-shadow: 0 2px 8px rgba(0,0,0,.32);
+  position: relative; z-index: 10;
+}
+.kopf-marke {
+  font-weight: 800; letter-spacing: .12em; font-size: 13px;
+  background: linear-gradient(#f3e6cf, #e4cfa8); color: #6e3021;
+  padding: 5px 9px; border-radius: 6px;
+  box-shadow: inset 0 1px 0 #fff8ec, 0 1px 3px rgba(0,0,0,.35);
+}
+.kopf-titel {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start;
+  gap: 1px; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,.14);
+}
+.kopf-titel b { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kopf-titel small { font-size: 11px; opacity: .8; }
+.kopf-menue {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  color: #f7ede1; background: rgba(0,0,0,.14);
+}
+
+/* ------------------------------------------------------------ Screens */
+#screens { flex: 1; position: relative; overflow: hidden; }
+.screen {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+.screen.aktiv { display: flex; }
+.screen-inhalt { padding: 14px 14px calc(20px + var(--tabs) + var(--sab)); }
+.screen-plan .screen-inhalt, .screen-3d .screen-inhalt { padding: 0; height: 100%; }
+
+.abschnitt-titel { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--sanft); margin: 6px 4px 10px; }
+
+/* ------------------------------------------------------------ Karten */
+.karte {
+  background: var(--karte); border: 1px solid var(--linie); border-radius: 16px;
+  box-shadow: var(--schatten); padding: 14px; margin-bottom: 12px;
+}
+.raum-karte { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.raum-karte:active { background: #fbf5ea; }
+.raum-icon { width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto;
+  background: linear-gradient(#f0d9c4, #e3bfa1); display: grid; place-items: center; color: var(--tk-d); }
+.raum-haupt { flex: 1; min-width: 0; }
+.raum-haupt b { display: block; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raum-haupt span { font-size: 13px; color: var(--sanft); }
+.raum-chips { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 20px; background: #f0e7d7; color: #6a5946; }
+.chip.warn { background: #f7e0da; color: var(--warn); font-weight: 600; }
+.chip.ok { background: #e6efd8; color: var(--ok); }
+.raum-karte-aktiv { border-color: var(--tk); box-shadow: 0 0 0 2px rgba(181,80,47,.18), var(--schatten); }
+.raum-pfeil { color: #c9b9a3; flex: 0 0 auto; }
+
+/* ------------------------------------------------------------ Formfelder */
+.feld { margin-bottom: 12px; }
+.feld > label { display: block; font-size: 12.5px; font-weight: 600; color: var(--sanft); margin: 0 2px 5px; }
+.feld input, .feld select {
+  width: 100%; height: 48px; padding: 0 14px; border: 1px solid var(--linie);
+  border-radius: 12px; background: #fff; outline: none;
+}
+.feld input:focus, .feld select:focus { border-color: var(--tk); box-shadow: 0 0 0 3px rgba(181,80,47,.14); }
+.feld-reihe { display: flex; gap: 10px; }
+.feld-reihe .feld { flex: 1; }
+
+/* Segmentierte Umschalter */
+.segmente { display: flex; background: #efe6d6; border-radius: 12px; padding: 4px; gap: 4px; }
+.segmente button { flex: 1; height: 40px; border-radius: 9px; font-size: 14px; color: var(--sanft); font-weight: 600; }
+.segmente button.an { background: #fff; color: var(--tk-d); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+/* Knöpfe */
+.knopf { height: 50px; border-radius: 13px; font-weight: 700; display: inline-flex; align-items: center;
+  justify-content: center; gap: 8px; padding: 0 18px; width: 100%; }
+.knopf.prim { background: linear-gradient(#c65f3a, #a8431f); color: #fff; box-shadow: 0 2px 8px rgba(120,45,15,.3); }
+.knopf.prim:active { filter: brightness(.94); }
+.knopf.zweit { background: #fff; border: 1px solid var(--linie); color: var(--tinte); }
+.knopf.gefahr { color: var(--warn); background: #fff; border: 1px solid #eccdc6; }
+.knopf-reihe { display: flex; gap: 10px; margin-top: 6px; }
+.knopf-reihe .knopf { flex: 1; }
+
+/* ------------------------------------------------------------ Tab-Leiste */
+.tabbar {
+  flex: 0 0 auto; height: calc(var(--tabs) + var(--sab)); padding-bottom: var(--sab);
+  display: flex; background: var(--karte); border-top: 1px solid var(--linie);
+  box-shadow: 0 -2px 12px rgba(60,35,15,.06); position: relative; z-index: 10;
+}
+.tabbar button {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; color: #a8977f; font-size: 11px; font-weight: 600; position: relative;
+}
+.tabbar button svg { width: 24px; height: 24px; }
+.tabbar button.an { color: var(--tk); }
+.tabbar button.an::before { content: ""; position: absolute; top: 0; width: 26px; height: 3px;
+  border-radius: 0 0 3px 3px; background: var(--tk); }
+
+/* ------------------------------------------------------------ FAB */
+.fab {
+  position: absolute; right: 16px; bottom: calc(16px + var(--tabs) + var(--sab));
+  width: 58px; height: 58px; border-radius: 50%; z-index: 20;
+  background: linear-gradient(#c65f3a, #a8431f); color: #fff;
+  box-shadow: 0 6px 18px rgba(120,45,15,.4); display: grid; place-items: center;
+}
+.fab svg { width: 28px; height: 28px; }
+.fab:active { filter: brightness(.94); }
+
+/* ------------------------------------------------------------ Plan */
+.plan-kopf { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
+  background: rgba(255,253,249,.94); border-bottom: 1px solid var(--linie); }
+.plan-kopf .segmente { flex: 1; }
+.plan-rund { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; border: 1px solid var(--linie);
+  background: #fff; display: grid; place-items: center; color: var(--tk-d); }
+.plan-flaeche { flex: 1; position: relative; background: #efe7d7; touch-action: none; }
+.plan-flaeche svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.plan-toast { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  background: rgba(51,38,28,.92); color: #fdf3e6; padding: 9px 16px; border-radius: 22px;
+  font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90%; }
+.plan-toast.zeig { opacity: 1; }
+
+/* Plan-SVG-Stil (eigenständig, nicht aus styles.css) */
+.plan-flaeche .raster line { stroke: #e2d6c0; stroke-width: 1; }
+.plan-flaeche .boden { fill: #fbf5ea; }
+.plan-flaeche .wand line { stroke: #6a4030; stroke-width: 5; stroke-linecap: round; }
+.plan-flaeche .wandnr-kreis { fill: #fff; stroke: var(--tk); stroke-width: 1.5; }
+.plan-flaeche .wandnr { fill: var(--tk-d); font-size: 12px; font-weight: 700; text-anchor: middle; }
+.plan-flaeche .klotz-box { fill: #dcc4a0; stroke: #6b4029; stroke-width: 1.5; }
+.plan-flaeche .klotz.aktiv .klotz-box { fill: #e7b892; stroke: var(--tk); stroke-width: 2.5; }
+.plan-flaeche .klotz-front { stroke: #5a3020; stroke-width: 2; }
+.plan-flaeche .klotz-text { fill: #3c2a1e; font-size: 11px; text-anchor: middle; }
+.plan-flaeche .einbau-sym { fill: #3a6ea5; stroke: #24486b; }
+.plan-flaeche .einbau.aktiv .einbau-sym { fill: var(--tk); stroke: var(--tk-d); }
+.plan-flaeche .einbau-text { fill: #24486b; font-size: 10px; text-anchor: middle; }
+.plan-flaeche .oeff line { stroke: #b58b5a; stroke-width: 5; }
+.plan-flaeche .foto-pin { fill: var(--amber); stroke: #8a5a12; }
+.plan-flaeche .mess-linie { stroke: var(--tk); stroke-width: 2; stroke-dasharray: 5 4; }
+.plan-flaeche .mess-text { fill: #3c2a1e; font-size: 12px; stroke: #fbf5ea; stroke-width: 3; paint-order: stroke; }
+.plan-flaeche .zone { fill: #5f8039; opacity: .2; }
+.plan-flaeche .zone.warn { fill: var(--warn); opacity: .25; }
+
+/* ------------------------------------------------------------ 3D */
+.dreid-flaeche { flex: 1; position: relative; background: #dfeaea; }
+.dreid-flaeche canvas { display: block; width: 100%; height: 100%; }
+.dreid-fehler { padding: 30px; text-align: center; color: var(--sanft); }
+
+/* ------------------------------------------------------------ Prüfung */
+.befund { display: flex; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--linie); }
+.befund:last-child { border-bottom: none; }
+.befund-punkt { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center; color: #fff; font-size: 15px; }
+.befund-punkt.ok { background: var(--ok); }
+.befund-punkt.warn { background: var(--warn); }
+.befund-punkt.hinweis { background: var(--amber); }
+.befund-text { flex: 1; }
+.befund-text b { font-size: 14.5px; font-weight: 600; }
+.befund-text span { display: block; font-size: 12.5px; color: var(--sanft); margin-top: 3px; }
+.leer { text-align: center; color: var(--sanft); padding: 40px 20px; }
+.leer svg { width: 54px; height: 54px; color: #d6c8b2; margin-bottom: 10px; }
+
+/* Zusammenfassungs-Banner */
+.banner { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; margin-bottom: 12px; }
+.banner.gut { background: #e9f0dd; color: #4d6a2c; }
+.banner.schlecht { background: #f8e2db; color: var(--warn); }
+.banner b { font-size: 22px; }
+
+/* ------------------------------------------------------------ Sheets */
+.backdrop { position: fixed; inset: 0; background: rgba(30,18,10,.5); z-index: 40; opacity: 0;
+  transition: opacity .22s; }
+.backdrop.zeig { opacity: 1; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+  background: var(--papier); border-radius: 22px 22px 0 0; box-shadow: var(--sheet-schatten);
+  transform: translateY(100%); transition: transform .26s cubic-bezier(.2,.8,.2,1);
+  max-height: 88%; display: flex; flex-direction: column;
+  padding-bottom: var(--sab);
+}
+.sheet.zeig { transform: translateY(0); }
+.sheet-griff { width: 42px; height: 5px; border-radius: 3px; background: #d8c8b2; margin: 10px auto 4px; flex: 0 0 auto; }
+.sheet-kopf { display: flex; align-items: center; justify-content: space-between; padding: 4px 18px 10px; }
+.sheet-kopf h3 { margin: 0; font-size: 18px; }
+.sheet-zu { width: 34px; height: 34px; border-radius: 50%; background: #eadfce; display: grid; place-items: center; color: var(--sanft); }
+.sheet-inhalt { overflow-y: auto; padding: 4px 18px 20px; -webkit-overflow-scrolling: touch; }
+
+/* Menü-/Listeneinträge im Sheet */
+.liste-eintrag { display: flex; align-items: center; gap: 14px; padding: 15px 6px; border-bottom: 1px solid var(--linie); width: 100%; text-align: left; }
+.liste-eintrag:last-child { border-bottom: none; }
+.liste-eintrag svg { width: 22px; height: 22px; color: var(--tk-d); flex: 0 0 auto; }
+.liste-eintrag.aktiv { color: var(--tk); font-weight: 700; }
+.liste-eintrag.gefahr { color: var(--warn); }
+.liste-eintrag.gefahr svg { color: var(--warn); }
+
+/* Palette-Gitter */
+.palette-gitter { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.palette-knopf { text-align: left; padding: 14px; border-radius: 14px; border: 1px solid var(--linie);
+  background: var(--karte); box-shadow: var(--schatten); min-height: 66px; }
+.palette-knopf b { display: block; font-size: 14px; }
+.palette-knopf small { color: var(--sanft); font-size: 12px; }
+.palette-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.palette-tabs button { flex: 1; height: 40px; border-radius: 20px; background: #efe6d6; color: var(--sanft); font-weight: 600; }
+.palette-tabs button.an { background: var(--tk); color: #fff; }
+
+/* Richtungswahl (Raum anlegen) */
+.richtung-gitter { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.richtung-knopf { height: 64px; border-radius: 14px; border: 1px solid var(--linie); background: var(--karte);
+  font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--schatten); }
+
+.hinweis-text { font-size: 13px; color: var(--sanft); margin: 2px 4px 12px; }
