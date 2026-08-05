@@ -11,12 +11,12 @@
  * Rückfall. Laufzeitdaten (Pipeline-API, Kamerabilder) werden nie abgefangen.
  */
 
-const CACHE = "raumwerk-app-v1";
+const CACHE = "raumwerk-app-v2";
 
 const HUELLE = [
   "./", "./index.html", "./styles.css", "./manifest.webmanifest", "./icon.svg",
   "./app.js", "./plan2d.js", "./gebaeude.js", "./store.js", "./report.js",
-  "./wolke3d.js", "./verbindung.js", "./ar.js",
+  "./wolke3d.js", "./verbindung.js", "./ar.js", "./native.js", "./scan.js",
   "../geometrie.js", "../symbole.js", "../komponenten.js", "../regelwerk.js",
   "../pruefung.js", "../normmasse.js", "../platzierung.js", "../modell3d.js",
   "../lib/three.module.min.js",

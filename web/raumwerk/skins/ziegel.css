@@ -1,70 +1,135 @@
 /*
- * Skin „ZIEGEL" – das Gesicht der Android-App: rustikal, Backstein.
+ * Skin „ZIEGEL" – das eigenständige Gesicht der Android-App.
  *
- * Warmes Sand/Creme, Terrakotta-Akzent, dunkles Backstein-Braun; die Kopfleiste
- * trägt ein Ziegelmauer-Muster. Bewusst handwerklich-warm statt technisch-kühl.
- * Nur über `:root[data-skin="ziegel"]` aktiv, die Weboberfläche bleibt unberührt.
+ * Kein umgefärbtes Standard-Layout, sondern ein eigener, handwerklicher Look:
+ * eine echte, nahtlos kachelnde **Backsteinmauer im Läuferverband** (als
+ * eingebettetes SVG, offline, ohne Bilddatei) als Bühne, darauf liegen die
+ * Panels wie **Pergament-Notizen** mit warmem Schlagschatten. Die Kopfleiste
+ * trägt ein **Keramik-Namensschild**, Schaltflächen sind **gebrannte Tonkacheln**
+ * mit Fase. Akzent ist glasiertes Terrakotta.
+ *
+ * Aktiv nur unter :root[data-skin="ziegel"] – die Weboberfläche bleibt unberührt.
  */
 
 :root[data-skin="ziegel"] {
-  --tk: #b5502f;            /* Terrakotta – Akzent, aktive Zustände */
-  --tk-dunkel: #5c2a1c;     /* dunkler Backstein – Kopf, Überschriften */
-  --warn: #b23a2e;
-  --warn-bg: #f6e0da;
-  --ok: #6f7d3a;            /* Moosgrün – bleibt erdig */
-  --hint: #a9761f;          /* Ocker */
-  --rand: #d8c3a8;          /* Ton */
-  --flaeche: #fbf4e9;       /* Creme – Panels */
-  --grund: #efe4d4;         /* warmer Sand – Hintergrund */
-  --text: #3c2a1e;          /* dunkles Braun */
-  --grau: #8a7358;          /* warmes Taupe */
-  --schatten: 0 1px 3px rgba(60, 40, 20, .18);
+  --tk: #b5502f;            /* glasiertes Terrakotta – Akzent, aktive Zustände */
+  --tk-dunkel: #5c2a1c;     /* gebrannter Ton – Überschriften, Rahmen */
+  --warn: #b02f22;
+  --warn-bg: #f3ddd5;
+  --ok: #6f7d3a;            /* Moosgrün */
+  --hint: #9a6b18;          /* Ocker */
+  --rand: #cbb597;          /* Mörtel/Ton */
+  --flaeche: #f6ead2;       /* Pergament – Panels */
+  --grund: #7a3624;         /* Backstein – Bühne */
+  --text: #37261b;          /* dunkles Nussbraun */
+  --grau: #7c644e;          /* warmes Taupe */
+  --schatten: 0 2px 6px rgba(40, 22, 10, .28);
+
+  /* Nahtlos kachelnde Läuferverband-Mauer (60×68-Kachel, Reihen um ½ versetzt). */
+  --mauer: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='68' viewBox='0 0 60 68'><rect width='60' height='68' fill='%23c9a878'/><g><rect x='2' y='2' width='56' height='30' rx='2' fill='%239c3f27'/><rect x='-28' y='36' width='56' height='30' rx='2' fill='%238f3a24'/><rect x='32' y='36' width='56' height='30' rx='2' fill='%238f3a24'/></g><g opacity='0.28'><rect x='2' y='2' width='56' height='3' fill='%23d98a63'/><rect x='-28' y='36' width='56' height='3' fill='%23c67a54'/><rect x='32' y='36' width='56' height='3' fill='%23c67a54'/></g></svg>");
+  --mauer-dunkel: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='68' viewBox='0 0 60 68'><rect width='60' height='68' fill='%23a9895f'/><g><rect x='2' y='2' width='56' height='30' rx='2' fill='%236e2f1d'/><rect x='-28' y='36' width='56' height='30' rx='2' fill='%235f2818'/><rect x='32' y='36' width='56' height='30' rx='2' fill='%235f2818'/></g><g opacity='0.3'><rect x='2' y='2' width='56' height='3' fill='%239a4a30'/><rect x='-28' y='36' width='56' height='3' fill='%23883f28'/><rect x='32' y='36' width='56' height='3' fill='%23883f28'/></g></svg>");
   color-scheme: light;
 }
 
-/* Kopfleiste als Ziegelmauer. */
+/* Die ganze Bühne ist eine Backsteinmauer. */
+[data-skin="ziegel"] body { background-color: var(--grund); background-image: var(--mauer); }
+[data-skin="ziegel"] .raster { background: transparent; }
+
+/* Kopfleiste: dunklere Mauerreihe mit eingelassenem Keramik-Namensschild. */
 [data-skin="ziegel"] .appbar {
-  background-color: #7a3625;
-  background-image:
-    repeating-linear-gradient(0deg, #6e3021 0, #6e3021 24px, #cba488 24px, #cba488 27px),
-    repeating-linear-gradient(90deg, transparent 0, transparent 58px, #cba488 58px, #cba488 61px);
+  background-color: #6e3021;
+  background-image: var(--mauer-dunkel);
+  border-bottom: 4px solid #3a1c0f;
+  box-shadow: inset 0 -3px 8px rgba(0, 0, 0, .4), 0 2px 6px rgba(0,0,0,.35);
   color: #f7ede1;
-  border-bottom: 3px solid #43200f;
-  box-shadow: inset 0 -2px 6px rgba(0, 0, 0, .25);
 }
-[data-skin="ziegel"] .marke { color: #f7ede1; letter-spacing: .2em; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
-[data-skin="ziegel"] .projekt-name { background: rgba(255, 255, 255, .16); color: #fff; }
+[data-skin="ziegel"] .marke {
+  background: linear-gradient(#f3e6cf, #e4cfa8);
+  color: #6e3021;
+  letter-spacing: .26em;
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: 1px solid #b79a72;
+  box-shadow: inset 0 1px 0 #fff8ec, inset 0 -2px 4px rgba(120,70,30,.35), 0 2px 5px rgba(0,0,0,.4);
+  text-shadow: 0 1px 0 #fff6e6;
+}
+[data-skin="ziegel"] .projekt-name {
+  background: rgba(255, 248, 236, .92); color: #4a2c1a;
+  border: 1px solid #caa877; border-radius: 6px;
+}
+[data-skin="ziegel"] .appbar-rechts .trenner { background: rgba(255,255,255,.35); }
 
-/* Panels warm, Überschriften Backstein. */
-[data-skin="ziegel"] .block { background: var(--flaeche); border-color: #e0cdb2; }
-[data-skin="ziegel"] h2 { color: var(--tk-dunkel); }
+/* Panels wie an die Mauer geheftete Pergament-Notizen. */
+[data-skin="ziegel"] .block {
+  background-color: var(--flaeche);
+  background-image:
+    radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,.5), transparent 55%),
+    repeating-linear-gradient(90deg, rgba(90,50,20,.03) 0 2px, transparent 2px 5px);
+  border: 1px solid #d8c09a;
+  border-radius: 5px 12px 6px 10px;   /* leicht unregelmäßig = handgemacht */
+  box-shadow: 0 3px 9px rgba(40,22,10,.30), inset 0 1px 0 #fffaf0;
+}
+[data-skin="ziegel"] h2 {
+  color: var(--tk-dunkel);
+  letter-spacing: .04em;
+  border-bottom: 2px solid #e0c9a3;
+  padding-bottom: 4px;
+}
 [data-skin="ziegel"] .insp-titel { color: var(--tk-dunkel); }
+[data-skin="ziegel"] .hint { color: var(--hint); }
 
-/* Buttons: heller Rahmen, aktive/Haupt-Flächen Terrakotta mit heller Schrift. */
+/* Schaltflächen als gebrannte Tonkacheln mit Fase. */
+[data-skin="ziegel"] button,
+[data-skin="ziegel"] .werkzeug,
+[data-skin="ziegel"] .chip,
+[data-skin="ziegel"] .palette-knopf {
+  background: linear-gradient(#f7ecd6, #e7d0ac);
+  color: #4a2c1a;
+  border: 1px solid #c3a678;
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 #fffaf0, 0 1px 2px rgba(80,45,20,.25);
+}
+[data-skin="ziegel"] button:hover,
+[data-skin="ziegel"] .werkzeug:hover { border-color: var(--tk); }
+[data-skin="ziegel"] button:active { box-shadow: inset 0 2px 4px rgba(80,45,20,.4); }
+
+/* Aktive/Haupt-Flächen: glasiertes Terrakotta. */
 [data-skin="ziegel"] button.haupt,
 [data-skin="ziegel"] .werkzeug.aktiv,
 [data-skin="ziegel"] .chip.aktiv,
 [data-skin="ziegel"] .palette-knopf.aktiv,
-[data-skin="ziegel"] .ansicht-wahl .werkzeug.aktiv { background: var(--tk); color: #fdf1e7; border-color: var(--tk); font-weight: 700; }
+[data-skin="ziegel"] .ansicht-wahl .werkzeug.aktiv {
+  background: linear-gradient(#c65f3a, #a8431f);
+  color: #fdf1e7; border-color: #7e3418; font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255,220,190,.5), 0 2px 4px rgba(60,20,5,.4);
+  text-shadow: 0 1px 1px rgba(70,20,5,.5);
+}
 [data-skin="ziegel"] .palette-knopf.aktiv small { color: #f3d9c8; }
-[data-skin="ziegel"] button:hover { border-color: var(--tk); }
 
-/* Plan: warme Bühne, dunkle Backstein-Wände, Terrakotta-Nummern. */
-[data-skin="ziegel"] .plan-wrap { background: #e7d8c2; }
-[data-skin="ziegel"] .raster line { stroke: #d3bfa4; }
+/* Plan: warme Werkbank-Fläche mit sepia Raster, dunkle Backstein-Wände. */
+[data-skin="ziegel"] .plan-wrap {
+  background-color: #e9dcc3;
+  background-image:
+    radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.35), transparent 60%),
+    var(--mauer);
+  background-blend-mode: normal, luminosity;
+}
+[data-skin="ziegel"] .plan-toolbar { background: rgba(246, 234, 210, .92); border-bottom: 1px solid #d8c09a; }
+[data-skin="ziegel"] svg.plan { background: rgba(247, 239, 222, .96); border-radius: 4px; }
+[data-skin="ziegel"] .raster line { stroke: #d8c3a3; }
 [data-skin="ziegel"] .wand line { stroke: #5a3020; stroke-width: 4.5; }
 [data-skin="ziegel"] .wandnr-kreis { fill: #fbf4e9; stroke: var(--tk); }
 [data-skin="ziegel"] .wandnr { fill: var(--tk-dunkel); }
-[data-skin="ziegel"] .klotz-box { fill: #d9c3a3; stroke: #6b4029; }
+[data-skin="ziegel"] .klotz-box { fill: #dcc4a0; stroke: #6b4029; }
 [data-skin="ziegel"] .klotz.aktiv .klotz-box { fill: #e7b892; stroke: var(--tk); }
 [data-skin="ziegel"] .klotz-front { stroke: #5a3020; }
 [data-skin="ziegel"] .klotz-text { fill: #3c2a1e; }
 [data-skin="ziegel"] .mess-text { fill: #3c2a1e; stroke: #efe4d4; }
-[data-skin="ziegel"] .plan-fuss { background: rgba(90, 48, 32, .82); color: #f3e7d7; }
+[data-skin="ziegel"] .plan-fuss { background: rgba(58, 28, 15, .86); color: #f3e7d7; }
 
 /* Badges/Auswahl im warmen Ton. */
 [data-skin="ziegel"] .badge.gut { background: #e7ecd2; color: var(--ok); }
 [data-skin="ziegel"] .var-tabelle tr.aktiv,
-[data-skin="ziegel"] .raum-zeile.aktiv { background: #f3e3d0; }
+[data-skin="ziegel"] .raum-zeile.aktiv { background: #f0dcc1; }
 [data-skin="ziegel"] .var-tabelle tr.aktiv .raum-wahl,
 [data-skin="ziegel"] .raum-zeile.aktiv .raum-wahl { color: var(--tk-dunkel); }

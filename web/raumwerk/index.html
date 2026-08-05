@@ -13,8 +13,10 @@
   <meta name="apple-mobile-web-app-title" content="RAUMWERK">
   <link rel="apple-touch-icon" href="icon.svg">
   <link rel="stylesheet" href="styles.css">
+  <!-- Brücke zur Gerätehardware (Lage/GPS/Kameras); im Browser mit Web-Rückfall. -->
+  <script src="native.js"></script>
   <script>
-    // Optionaler Skin (z. B. die Android-App lädt ?skin=werk für ihr eigenes
+    // Optionaler Skin (z. B. die Android-App lädt ?skin=ziegel für ihr eigenes
     // Design). Wird nach styles.css eingehängt und überschreibt daher.
     (function () {
       var s = new URLSearchParams(location.search).get("skin");
@@ -96,6 +98,7 @@
         <div class="werkzeuge" id="panelWerkzeuge"></div>
         <div class="toolbar-rechts">
           <span id="messErgebnis" class="mess-ergebnis"></span>
+          <button id="btnScan" title="Geführte Raumaufnahme (Referenzwürfel + Sensorik)">Scan</button>
           <button id="btnAR" title="AR-Besprechung vor Ort (Kamera)">AR</button>
           <button id="btnEinpassen" title="Ansicht einpassen">einpassen</button>
         </div>

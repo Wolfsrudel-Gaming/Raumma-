@@ -4,13 +4,34 @@ Eine **eigenständige Android-App**, die die RAUMWERK-Web-App **offline** aus
 gebündelten Assets lädt – über einen virtuellen HTTPS-Origin
 (`WebViewAssetLoader`), damit ES-Module und Kamera/AR funktionieren.
 
-Sie trägt ein **eigenes, dunkles Design** (Skin `werk`), das sich klar von der
-hellen Weboberfläche abhebt: dunkles Instrument, Bernstein-Akzent.
+Sie trägt ein **eigenes, rustikales Backstein-Design** (Skin `ziegel`), das sich
+klar von der hellen Weboberfläche abhebt: eine kachelnde Ziegelmauer als Bühne,
+Pergament-Panels, Keramik-Namensschild, Tonkachel-Schaltflächen.
 
 - **Offline:** alles ist eingebettet; kein Server nötig (die Pipeline-Anbindung
   bleibt optional). localStorage speichert die Projekte.
 - **Eine Quelle:** die App wird beim Build aus `../web` kopiert (Gradle-Task
   `kopiereWeb`) – Web und App zeigen exakt dasselbe.
+
+### Echte Gerätesensorik (mehr als ein Browser kann)
+
+`NativeBridge.kt` hängt als `AndroidNative` in die WebView und gibt der Web-App
+**echten Hardwarezugriff**, den ein Browser so nicht zuverlässig hat:
+
+- **Lage** aus dem Rotationsvektor (Beschleunigung + Gyroskop + Magnetfeld
+  fusioniert): Kompass-Azimut, Neigung, Roll und ein sauberes Quaternion.
+- **Ort** über GPS/Netz (Länge/Breite/Höhe/Genauigkeit).
+- **Geräte-Steckbrief:** jede physische Kamera (auch **Mono-/IR-Linsen** für
+  Nachtsicht und die Einzellinsen einer logischen Multi-Kamera) samt
+  Brennweiten, dazu die komplette Sensorliste.
+
+Der neue **Scan-Assistent** (Knopf „Scan") nutzt das: Referenzwürfel bekannter
+Kantenlänge als Maßstab, ein **Pfeil auf dem Display** führt per Kompass durch
+die noch offenen Blickrichtungen, jede Aufnahme wird mit ihrer Lage und dem Ort
+verschlagwortet – die Grundlage für die Photogrammetrie (Schicht ②).
+
+Im normalen Browser fällt die Web-Schicht (`web/raumwerk/native.js`) sauber auf
+DeviceOrientation/Geolocation zurück; die App bekommt die echten Sensoren.
 
 ---
 
@@ -41,8 +62,11 @@ Platform 34 und Build-Tools 34.
 ## Aufbau
 
 - `app/src/main/java/de/raumwerk/app/MainActivity.kt` – WebView +
-  `WebViewAssetLoader`, Kamera-Durchreichung, lädt `raumwerk/index.html?skin=werk`.
-- `app/src/main/res/` – Design: Farben, dunkles Theme, Splash, Adaptive-Icon.
+  `WebViewAssetLoader`, Kamera-Durchreichung, Sensor-Lebenszyklus, lädt
+  `raumwerk/index.html?skin=ziegel`.
+- `app/src/main/java/de/raumwerk/app/NativeBridge.kt` – Lage/GPS/Kamera-Steckbrief
+  als `AndroidNative` für die Web-App.
+- `app/src/main/res/` – Design: Farben, Backstein-Theme, Splash, Adaptive-Icon.
 - `app/build.gradle.kts` – `kopiereWeb`-Task kopiert `../web` nach `assets/`.
 
 `assets/` und `build/` sind erzeugt und nicht eingecheckt.

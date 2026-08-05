@@ -337,6 +337,24 @@ async function arMitKunde() {
   }
 }
 
+/** Geführte Raumaufnahme (Referenzwürfel + Sensorik) für die Photogrammetrie. */
+async function scanStarten() {
+  try {
+    const mod = await import("./scan.js");
+    await mod.starteScan({
+      raum: raum(),
+      speichern: (manifest) => {
+        projekt.scans = projekt.scans || [];
+        projekt.scans.push(manifest);
+        Store.speichern(projekt);
+      },
+      onEnde: () => render(),
+    });
+  } catch (_) {
+    alert("Scan konnte nicht gestartet werden (Kamera nötig).");
+  }
+}
+
 // -------------------------------------------------- Pipeline / Wolke
 
 function renderPipeline() {
@@ -909,6 +927,7 @@ function verdrahteKopf() {
     else wolke3d?.resize();
   };
   $("btnAR").onclick = arMitKunde;
+  $("btnScan").onclick = scanStarten;
   $("btnExport").onclick = exportJson;
   $("btnImport").onclick = () => $("fileImport").click();
   $("fileImport").onchange = e => importJson(e.target.files[0]);

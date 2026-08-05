@@ -20,7 +20,10 @@ import androidx.webkit.WebViewClientCompat
  * Die App lädt **offline** aus den gebündelten Assets, aber über einen
  * virtuellen HTTPS-Origin (WebViewAssetLoader). Das ist wichtig: nur so laden
  * die ES-Module und nur so ist es ein sicherer Kontext, in dem Kamera und
- * Sensoren (AR) laufen. Kein Netz nötig; die Pipeline-Anbindung bleibt optional.
+ * Sensoren (AR, Scan) laufen. Kein Netz nötig.
+ *
+ * Über [NativeBridge] (`AndroidNative`) bekommt die Web-App echten Zugriff auf
+ * Lage-, Orts- und Kamerasensorik – deutlich mehr, als ein Browser hergibt.
  *
  * Das eigene Design zieht die App über `?skin=ziegel` – ein rustikaler
  * Backstein-Look, der sich klar von der hellen Weboberfläche unterscheidet.
@@ -28,13 +31,13 @@ import androidx.webkit.WebViewClientCompat
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
+    private lateinit var bruecke: NativeBridge
+    private var sensorikGewollt = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
-        }
+        rechteAnfragen()
 
         val loader = WebViewAssetLoader.Builder()
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
@@ -61,9 +64,38 @@ class MainActivity : Activity() {
                 }
             }
         }
+
+        bruecke = NativeBridge(this, web)
+        web.addJavascriptInterface(bruecke, "AndroidNative")
         setContentView(web)
 
         web.loadUrl("https://appassets.androidplatform.net/raumwerk/index.html?skin=ziegel")
+    }
+
+    private fun rechteAnfragen() {
+        val fehlt = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        ).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (fehlt.isNotEmpty()) requestPermissions(fehlt.toTypedArray(), 1)
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, ergebnis: IntArray) {
+        super.onRequestPermissionsResult(code, perms, ergebnis)
+        // Nach erteiltem Ortungsrecht die Sensorik neu anwerfen, damit GPS greift.
+        if (sensorikGewollt) bruecke.starteSensorik()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        sensorikGewollt = true
+        bruecke.starteSensorik()
+    }
+
+    override fun onPause() {
+        bruecke.stoppeSensorik()
+        super.onPause()
     }
 
     override fun onBackPressed() {
