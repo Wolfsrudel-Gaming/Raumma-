@@ -89,7 +89,11 @@
     navigator.mediaDevices.enumerateDevices().then(function (list) {
       var kams = list.filter(function (d) { return d.kind === "videoinput"; })
         .map(function (d, i) { return { id: d.deviceId, richtung: /front/i.test(d.label) ? "vorne" : "hinten", etikett: d.label || ("Kamera " + (i + 1)) }; });
-      N._info = { hersteller: "Browser", modell: navigator.userAgent, kameras: kams, sensoren: [] };
+      // Kurzer Gerätename statt des kompletten User-Agents (sprengt sonst die Zeile):
+      // die letzte Angabe der ersten Klammer, also z. B. „Pixel 5".
+      var m = navigator.userAgent.match(/\(([^)]+)\)/);
+      var teile = m ? m[1].split(";").map(function (s) { return s.trim(); }) : [];
+      N._info = { hersteller: "Browser", modell: teile[teile.length - 1] || "Web", kameras: kams, sensoren: [] };
     }).catch(function () {});
   }
 
