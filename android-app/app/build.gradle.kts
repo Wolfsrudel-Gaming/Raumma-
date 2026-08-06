@@ -11,8 +11,22 @@ android {
         applicationId = "de.raumwerk.app"
         minSdk = 26            // Android 8 – reicht für Adaptive Icons und WebViewAssetLoader
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    // Fester, eingecheckter Signierschlüssel. Wichtig: sonst erzeugt jeder
+    // CI-Runner einen eigenen Debug-Schlüssel → Android verweigert das Update
+    // („App nicht installiert / Signatur passt nicht"). Mit diesem Schlüssel
+    // sind alle Builds untereinander update-fähig. (Kein Geheimnis – ein
+    // selbstsignierter Debug-Schlüssel, nicht für den Play Store gedacht.)
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("raumwerk-debug.keystore")
+            storePassword = "raumwerk"
+            keyAlias = "raumwerk"
+            keyPassword = "raumwerk"
+        }
     }
 
     buildTypes {
