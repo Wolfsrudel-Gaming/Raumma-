@@ -11,8 +11,8 @@ android {
         applicationId = "de.raumwerk.app"
         minSdk = 26            // Android 8 – reicht für Adaptive Icons und WebViewAssetLoader
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.3.0"
     }
 
     // Fester, eingecheckter Signierschlüssel. Wichtig: sonst erzeugt jeder

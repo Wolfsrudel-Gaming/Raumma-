@@ -1,37 +1,83 @@
 /*
- * RAUMWERK · Mobile-App – eigenständige, für den Daumen gebaute Oberfläche.
+ * RAUMWERK · App – Designsystem „Ziegelwerk".
  *
- * Kein Desktop-Layout im Kleinen: eine Bildschirmansicht zur Zeit, feste
- * Kopfleiste, Tab-Leiste unten im Daumenbereich, Bearbeiten über hochziehbare
- * Sheets, große Touch-Ziele. Backstein bleibt als warmer Akzent (Kopfleiste),
- * die Arbeitsflächen sind ruhig und hell.
+ * Umsetzung der Designrichtung aus Konzept v2 §6 und des App-Entwurfs:
+ * robust, warm, „Werkzeug in der Hand". Der Ziegelstein ist Ordnungssystem,
+ * nicht Deko: Mauerwerks-Raster in der Kopfleiste, **Fugenlinien als Trenner**.
+ *
+ * Prinzipien (wörtlich aus dem Entwurf):
+ *   · Trefferflächen ≥ 48 dp
+ *   · Fugenlinien statt Schatten
+ *   · Maße immer monospaced
+ *   · Herkunft (Laser / Foto ±) am Wert sichtbar
+ *   · Radien max. 3 px
+ *
+ * Navigation ist das **Seitenmenü (Drawer)**, nicht eine Tab-Leiste.
  */
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-:root {
-  --papier: #f4efe6;
-  --karte: #fffdf9;
-  --tinte: #33261c;
-  --sanft: #8a7862;
-  --tk: #b5502f;
-  --tk-d: #8f3c1f;
-  --linie: #e9dfce;
-  --ok: #5f8039;
-  --warn: #c0432b;
-  --amber: #c98a2b;
-  --schatten: 0 2px 12px rgba(60, 35, 15, .10);
-  --sheet-schatten: 0 -8px 30px rgba(40, 22, 10, .28);
-  --kopf: 56px;
-  --tabs: 62px;
-  --sat: env(safe-area-inset-top, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
+/* ------------------------------------------------------------ Schriften
+   Latin-Subsets, lokal eingebettet (OFL) – die App läuft offline. */
+@font-face {
+  font-family: "Zilla Slab"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("../../lib/fonts/zillaslab-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Zilla Slab"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("../../lib/fonts/zillaslab-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Sans 3"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url("../../lib/fonts/sourcesans-var.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url("../../lib/fonts/plexmono-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("../../lib/fonts/plexmono-600.woff2") format("woff2");
 }
 
+/* ------------------------------------------------------------ Palette */
+:root {
+  --ziegel: #A8432A;        /* Ziegelrot – Primär */
+  --ziegel-tief: #7C3220;   /* Druckkante des Primärknopfs */
+  --sand: #D9C2A3;          /* Sand – Linien, Fugen */
+  --anthrazit: #2C2A28;     /* Anthrazit – Tinte, dunkle Flächen */
+  --kalk: #F1E9DD;          /* Kalk-Off – Papier */
+  --fuge: #6E5B4E;          /* Fugengrau – Sekundärtext */
+  --signal: #E8B44A;        /* Signal – Scan, Höhen, Hinweise */
+
+  /* Statusfarben */
+  --ok-bg: #CDE0C7;   --ok-fg: #33502D;
+  --pruef-bg: #F3DDB4; --pruef-fg: #6B4C12;
+  --stoss-bg: #F3D3C4; --stoss-fg: #7A2E18;
+  --lokal-bg: #E7DBC8; --lokal-fg: #6E5B4E;
+
+  /* Umschaltbares Thema (Dark Mode „Baustelle") */
+  --bg: var(--kalk);
+  --card: #FFFFFF;
+  --line: var(--sand);
+  --ink: var(--anthrazit);
+  --sub: var(--fuge);
+  --chip: #EFE6D8;
+
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+
+  /* Läuferverband: 2-px-Fugen, versetzte Reihen – als Struktur, nicht als Tapete. */
+  --mauer: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='56'%3E%3Cg fill='%23000' opacity='.22'%3E%3Crect width='120' height='2'/%3E%3Crect y='28' width='120' height='2'/%3E%3Crect width='2' height='28'/%3E%3Crect x='60' width='2' height='28'/%3E%3Crect x='30' y='28' width='2' height='28'/%3E%3Crect x='90' y='28' width='2' height='28'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.10'%3E%3Crect y='2' width='120' height='1'/%3E%3Crect y='30' width='120' height='1'/%3E%3C/g%3E%3C/svg%3E");
+}
+:root[data-thema="dunkel"] {
+  --bg: #1F1D1B; --card: #2A2724; --line: #463D36;
+  --ink: #F1E9DD; --sub: #B5A08B; --chip: #332F2B;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; overscroll-behavior: none; }
 body {
-  font: 16px/1.4 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
-  color: var(--tinte);
-  background: var(--papier);
+  font: 400 15px/1.45 "Source Sans 3", system-ui, sans-serif;
+  color: var(--ink); background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 button, input, select { font: inherit; color: inherit; }
@@ -39,434 +85,491 @@ button { cursor: pointer; border: none; background: none; }
 
 #app { display: flex; flex-direction: column; height: 100%; }
 
+/* Wiederkehrende Bausteine ------------------------------------------- */
+.mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+/* Rubrik: kleine Mono-Versalien, das Ordnungsmerkmal des Systems. */
+.rubrik {
+  font: 600 10.5px/1 "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--sub);
+  margin: 0 0 9px;
+}
+
 /* ------------------------------------------------------------ Kopfleiste */
 .kopf {
-  height: calc(var(--kopf) + var(--sat));
-  padding-top: var(--sat);
-  flex: 0 0 auto;
-  display: flex; align-items: center; gap: 10px;
-  padding-left: 12px; padding-right: 12px;
-  background-color: #7a3624;
-  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='34' viewBox='0 0 60 34'><rect width='60' height='34' fill='%23a9895f'/><rect x='2' y='2' width='56' height='13' rx='1.5' fill='%236e2f1d'/><rect x='-28' y='18' width='56' height='13' rx='1.5' fill='%235f2818'/><rect x='32' y='18' width='56' height='13' rx='1.5' fill='%235f2818'/></svg>");
-  color: #f7ede1;
-  box-shadow: 0 2px 8px rgba(0,0,0,.32);
-  position: relative; z-index: 10;
+  flex: 0 0 auto; padding-top: var(--sat);
+  background-color: var(--ziegel); background-image: var(--mauer);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .22);
+  color: #F6EFE4;
 }
-.kopf-marke {
-  font-weight: 800; letter-spacing: .12em; font-size: 13px;
-  background: linear-gradient(#f3e6cf, #e4cfa8); color: #6e3021;
-  padding: 5px 9px; border-radius: 6px;
-  box-shadow: inset 0 1px 0 #fff8ec, 0 1px 3px rgba(0,0,0,.35);
+.kopf-reihe { display: flex; align-items: center; gap: 2px; padding: 8px 10px 11px; }
+.kopf-burger {
+  width: 48px; height: 48px; flex: 0 0 auto; border-radius: 3px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
 }
-.kopf-titel {
-  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start;
-  gap: 1px; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,.14);
+.kopf-burger:active { background: rgba(0, 0, 0, .22); }
+.kopf-burger i { width: 22px; height: 2.5px; background: #F1E9DD; border-radius: 1px; display: block; }
+.kopf-burger i:last-child { width: 16px; margin-right: 6px; }
+.kopf-titel { flex: 1; min-width: 0; padding-left: 5px; text-align: left; }
+.kopf-krume {
+  display: block;
+  font: 600 10.5px/1.2 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .15em;
+  color: rgba(241, 233, 221, .7); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.kopf-titel b { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kopf-titel small { font-size: 11px; opacity: .8; }
-.kopf-menue {
-  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  color: #f7ede1; background: rgba(0,0,0,.14);
+.kopf-name {
+  display: block;
+  font: 600 23px/1.25 "Zilla Slab", Georgia, serif; color: #F6EFE4;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.kopf-sync {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 7px 6px; border-radius: 3px; color: rgba(246, 239, 228, .9);
+}
+.kopf-sync:active { background: rgba(0, 0, 0, .2); }
+.kopf-punkt { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 4px rgba(0, 0, 0, .18); }
+.kopf-sync span { font: 600 8.5px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .08em; }
 
 /* ------------------------------------------------------------ Screens */
 #screens { flex: 1; position: relative; overflow: hidden; }
-.screen {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  overflow-y: auto; -webkit-overflow-scrolling: touch;
-}
-.screen.aktiv { display: flex; }
-.screen-inhalt { padding: 14px 14px calc(20px + var(--tabs) + var(--sab)); }
+.screen { position: absolute; inset: 0; display: none; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.screen.aktiv { display: flex; animation: rwfade .2s ease-out; }
+.screen-inhalt { padding: 14px 14px calc(24px + var(--sab)); }
 .screen-plan .screen-inhalt, .screen-3d .screen-inhalt { padding: 0; height: 100%; }
+@keyframes rwfade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-.abschnitt-titel { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--sanft); margin: 6px 4px 10px; }
+/* ------------------------------------------------------------ Kennzahlen */
+.kennzahlen { display: flex; gap: 7px; margin-bottom: 17px; }
+.kennzahl { flex: 1; border-radius: 3px; padding: 10px 11px; }
+.kennzahl b { display: block; font: 600 24px/1.1 "Zilla Slab", Georgia, serif; }
+.kennzahl span { font: 600 8.5px/1.2 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .12em; }
+.kennzahl.dunkel { background: var(--anthrazit); }
+.kennzahl.dunkel b { color: var(--kalk); } .kennzahl.dunkel span { color: var(--sand); }
+.kennzahl.braun { background: var(--fuge); }
+.kennzahl.braun b { color: var(--kalk); } .kennzahl.braun span { color: var(--sand); }
+.kennzahl.sand { background: var(--sand); }
+.kennzahl.sand b { color: var(--anthrazit); } .kennzahl.sand span { color: var(--fuge); }
 
-/* ------------------------------------------------------------ Karten */
+/* ------------------------------------------------------------ Listen/Karten
+   Fugenlinien statt Schatten: die Liste ist ein Mauerwerk aus Steinen, die
+   Fuge (--line) ist der Hintergrund, die Steine sitzen mit 1,5 px Abstand. */
+.mauerliste {
+  display: flex; flex-direction: column; gap: 1.5px;
+  background: var(--line); border: 1.5px solid var(--line);
+  border-radius: 3px; overflow: hidden;
+}
+.stein {
+  background: var(--card); padding: 12px 13px; display: flex; gap: 12px; align-items: center;
+  min-height: 48px; width: 100%; text-align: left;
+}
+.stein:active { background: var(--chip); }
+.stein-kachel {
+  width: 44px; height: 44px; flex: 0 0 auto; border-radius: 2px;
+  background: var(--ziegel); background-image: var(--mauer); background-size: 60px 28px;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 16px "Zilla Slab", Georgia, serif; color: #F6EFE4;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18);
+}
+.stein-haupt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.stein-name { display: block; font: 600 17px/1.25 "Zilla Slab", Georgia, serif; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stein-meta { display: block; font: 400 12.5px/1.35 "Source Sans 3", sans-serif; color: var(--sub); }
+
+/* Karte mit Statusfuge links */
 .karte {
-  background: var(--karte); border: 1px solid var(--linie); border-radius: 16px;
-  box-shadow: var(--schatten); padding: 14px; margin-bottom: 12px;
+  background: var(--card); border: 1.5px solid var(--line);
+  border-radius: 2px; padding: 12px 13px; margin-bottom: 11px;
 }
-.raum-karte { display: flex; align-items: center; gap: 12px; padding: 14px; }
-.raum-karte:active { background: #fbf5ea; }
-.raum-icon { width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto;
-  background: linear-gradient(#f0d9c4, #e3bfa1); display: grid; place-items: center; color: var(--tk-d); }
-.raum-haupt { flex: 1; min-width: 0; }
-.raum-haupt b { display: block; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.raum-haupt span { font-size: 13px; color: var(--sanft); }
-.raum-chips { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-.chip { font-size: 12px; padding: 2px 8px; border-radius: 20px; background: #f0e7d7; color: #6a5946; }
-.chip.warn { background: #f7e0da; color: var(--warn); font-weight: 600; }
-.chip.ok { background: #e6efd8; color: var(--ok); }
-.raum-karte-aktiv { border-color: var(--tk); box-shadow: 0 0 0 2px rgba(181,80,47,.18), var(--schatten); }
-.raum-pfeil { color: #c9b9a3; flex: 0 0 auto; }
+.karte.status { border-left-width: 5px; }
+.karte.status-ok { border-left-color: var(--ok-fg); }
+.karte.status-warn { border-left-color: var(--signal); }
+.karte.status-stoss { border-left-color: var(--ziegel); }
+.karte-kopf { display: flex; align-items: baseline; gap: 8px; }
+.karte-titel { flex: 1; font: 600 17px/1.2 "Zilla Slab", Georgia, serif; color: var(--ink); }
+.karte-wert { font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--sub); }
 
-/* ------------------------------------------------------------ Formfelder */
-.feld { margin-bottom: 12px; }
-.feld > label { display: block; font-size: 12.5px; font-weight: 600; color: var(--sanft); margin: 0 2px 5px; }
-.feld input, .feld select {
-  width: 100%; height: 48px; padding: 0 14px; border: 1px solid var(--linie);
-  border-radius: 12px; background: #fff; outline: none;
+/* Marken (Badges) */
+.marken { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.marke {
+  font: 600 9.5px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .06em;
+  padding: 6px 7px; border-radius: 2px; background: var(--chip);
+  border: 1px solid var(--line); color: var(--sub);
 }
-.feld input:focus, .feld select:focus { border-color: var(--tk); box-shadow: 0 0 0 3px rgba(181,80,47,.14); }
-.feld-reihe { display: flex; gap: 10px; }
-.feld-reihe .feld { flex: 1; }
+.marke.ok { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
+.marke.pruef { background: var(--pruef-bg); color: var(--pruef-fg); border-color: transparent; }
+.marke.stoss { background: var(--stoss-bg); color: var(--stoss-fg); border-color: transparent; }
 
-/* Segmentierte Umschalter */
-.segmente { display: flex; background: #efe6d6; border-radius: 12px; padding: 4px; gap: 4px; }
-.segmente button { flex: 1; height: 40px; border-radius: 9px; font-size: 14px; color: var(--sanft); font-weight: 600; }
-.segmente button.an { background: #fff; color: var(--tk-d); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
-
-/* Knöpfe */
-.knopf { height: 50px; border-radius: 13px; font-weight: 700; display: inline-flex; align-items: center;
-  justify-content: center; gap: 8px; padding: 0 18px; width: 100%; }
-.knopf.prim { background: linear-gradient(#c65f3a, #a8431f); color: #fff; box-shadow: 0 2px 8px rgba(120,45,15,.3); }
-.knopf.prim:active { filter: brightness(.94); }
-.knopf.zweit { background: #fff; border: 1px solid var(--linie); color: var(--tinte); }
-.knopf.gefahr { color: var(--warn); background: #fff; border: 1px solid #eccdc6; }
-.knopf-reihe { display: flex; gap: 10px; margin-top: 6px; }
+/* ------------------------------------------------------------ Knöpfe
+   Primär trägt eine harte Druckkante (0 3px 0) – kein weicher Schatten. */
+.knopf {
+  min-height: 50px; border-radius: 3px; width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 0 18px;
+  font: 600 15px "Source Sans 3", sans-serif;
+}
+.knopf.prim {
+  background: var(--ziegel); color: #F6EFE4; box-shadow: 0 3px 0 var(--ziegel-tief);
+  font-family: "Zilla Slab", Georgia, serif; font-size: 16px;
+}
+.knopf.prim:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ziegel-tief); }
+.knopf.zweit { border: 2px solid var(--sub); color: var(--sub); background: transparent; }
+.knopf.zweit:active { background: var(--chip); }
+.knopf.gefahr { border: 2px solid var(--ziegel); color: var(--ziegel); background: transparent; }
+.knopf.gefahr:active { background: rgba(168, 67, 42, .1); }
+.knopf-reihe { display: flex; gap: 9px; }
 .knopf-reihe .knopf { flex: 1; }
 
-/* ------------------------------------------------------------ Tab-Leiste */
-.tabbar {
-  flex: 0 0 auto; height: calc(var(--tabs) + var(--sab)); padding-bottom: var(--sab);
-  display: flex; background: var(--karte); border-top: 1px solid var(--linie);
-  box-shadow: 0 -2px 12px rgba(60,35,15,.06); position: relative; z-index: 10;
+/* Segment-Umschalter: Fugengrau als Rahmen, gewählte Fläche hell */
+.segmente { display: flex; gap: 2px; background: var(--fuge); border-radius: 2px; padding: 2px; }
+.segmente button {
+  flex: 1; text-align: center; padding: 12px 4px; min-height: 44px;
+  font: 600 13.5px "Source Sans 3", sans-serif; color: rgba(241, 233, 221, .8);
+  border-radius: 1px; transition: background .15s, color .15s;
 }
-.tabbar button {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; color: #a8977f; font-size: 11px; font-weight: 600; position: relative;
-}
-.tabbar button svg { width: 24px; height: 24px; }
-.tabbar button.an { color: var(--tk); }
-.tabbar button.an::before { content: ""; position: absolute; top: 0; width: 26px; height: 3px;
-  border-radius: 0 0 3px 3px; background: var(--tk); }
+.segmente button.an { background: var(--kalk); color: var(--anthrazit); }
 
-/* ------------------------------------------------------------ FAB */
-.fab {
-  position: absolute; right: 16px; bottom: calc(16px + var(--tabs) + var(--sab));
-  width: 58px; height: 58px; border-radius: 50%; z-index: 20;
-  background: linear-gradient(#c65f3a, #a8431f); color: #fff;
-  box-shadow: 0 6px 18px rgba(120,45,15,.4); display: grid; place-items: center;
+/* ------------------------------------------------------------ Felder */
+.feld { margin-bottom: 12px; }
+.feld > label { display: block; font: 600 10.5px/1 "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--sub); margin: 0 1px 6px; }
+.feld input, .feld select {
+  width: 100%; min-height: 48px; padding: 0 13px;
+  border: 1.5px solid var(--line); border-radius: 2px;
+  background: var(--card); color: var(--ink); outline: none;
 }
-.fab svg { width: 28px; height: 28px; }
-.fab:active { filter: brightness(.94); }
+.feld input[type="number"] { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; }
+.feld input:focus, .feld select:focus { border-color: var(--ziegel); }
+.feld-reihe { display: flex; gap: 10px; }
+.feld-reihe .feld { flex: 1; }
+.hinweis-text { font: 400 12.5px/1.45 "Source Sans 3", sans-serif; color: var(--sub); margin: 2px 1px 12px; }
+
+/* Höhenbezug (Rohboden ⇄ Fertigfußboden) – Konzept §10 */
+.bezug-bild { display: flex; gap: 10px; align-items: flex-end; margin-top: 12px; }
+.bezug-skizze { flex: 0 0 auto; width: 66px; height: 52px; position: relative; border-bottom: 3px solid var(--fuge); }
+.bezug-belag { position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+  background-image: repeating-linear-gradient(90deg, rgba(110,91,78,.5) 0 2px, transparent 2px 7px);
+  border-top: 2px solid var(--ziegel); }
+.bezug-marke { position: absolute; left: 0; bottom: 14px;
+  font: 600 8px "IBM Plex Mono", ui-monospace, monospace; color: var(--ziegel); }
+.bezug-text { flex: 1; font: 400 12.5px/1.45 "Source Sans 3", sans-serif; color: var(--sub); }
+.bezug-text b { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; color: var(--ink); }
 
 /* ------------------------------------------------------------ Plan */
-.plan-kopf { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
-  background: rgba(255,253,249,.94); border-bottom: 1px solid var(--linie); }
-.plan-kopf .segmente { flex: 1; }
-.plan-rund { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; border: 1px solid var(--linie);
-  background: #fff; display: grid; place-items: center; color: var(--tk-d); }
-.plan-flaeche { flex: 1; position: relative; background: #efe7d7; touch-action: none; }
+.plan-leiste { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
+  background: var(--chip); border-bottom: 2px solid var(--line); }
+.plan-leiste .segmente { flex: 1; }
+.plan-rund {
+  width: 48px; min-height: 48px; flex: 0 0 auto; border-radius: 2px;
+  border: 2px solid var(--line); background: var(--card); color: var(--sub);
+  display: grid; place-items: center;
+  font: 600 12px "IBM Plex Mono", ui-monospace, monospace;
+}
+.plan-rund:active { background: var(--chip); }
+.plan-flaeche { flex: 1; position: relative; background: var(--chip); touch-action: none; }
 .plan-flaeche svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.plan-toast { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
-  background: rgba(51,38,28,.92); color: #fdf3e6; padding: 9px 16px; border-radius: 22px;
-  font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90%; }
+.plan-toast {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  background: var(--anthrazit); color: var(--kalk); padding: 10px 15px; border-radius: 2px;
+  font: 500 13px "IBM Plex Mono", ui-monospace, monospace; opacity: 0; transition: opacity .2s;
+  pointer-events: none; max-width: 92%; text-align: center;
+}
 .plan-toast.zeig { opacity: 1; }
 
-/* Plan-SVG-Stil (eigenständig, nicht aus styles.css) */
-.plan-flaeche .raster line { stroke: #e2d6c0; stroke-width: 1; }
-.plan-flaeche .boden { fill: #fbf5ea; }
-.plan-flaeche .wand line { stroke: #6a4030; stroke-width: 5; stroke-linecap: round; }
-.plan-flaeche .wandnr-kreis { fill: #fff; stroke: var(--tk); stroke-width: 1.5; }
-.plan-flaeche .wandnr { fill: var(--tk-d); font-size: 12px; font-weight: 700; text-anchor: middle; }
-.plan-flaeche .klotz-box { fill: #dcc4a0; stroke: #6b4029; stroke-width: 1.5; }
-.plan-flaeche .klotz.aktiv .klotz-box { fill: #e7b892; stroke: var(--tk); stroke-width: 2.5; }
-.plan-flaeche .klotz-front { stroke: #5a3020; stroke-width: 2; }
-.plan-flaeche .klotz-text { fill: #3c2a1e; font-size: 11px; text-anchor: middle; }
-.plan-flaeche .einbau-sym { fill: #3a6ea5; stroke: #24486b; }
-.plan-flaeche .einbau.aktiv .einbau-sym { fill: var(--tk); stroke: var(--tk-d); }
-.plan-flaeche .einbau-text { fill: #24486b; font-size: 10px; text-anchor: middle; }
-.plan-flaeche .oeff line { stroke: #b58b5a; stroke-width: 5; }
-.plan-flaeche .foto-pin { fill: var(--amber); stroke: #8a5a12; }
-.plan-flaeche .mess-linie { stroke: var(--tk); stroke-width: 2; stroke-dasharray: 5 4; }
-.plan-flaeche .mess-text { fill: #3c2a1e; font-size: 12px; stroke: #fbf5ea; stroke-width: 3; paint-order: stroke; }
-.plan-flaeche .zone { fill: #5f8039; opacity: .2; }
-.plan-flaeche .zone.warn { fill: var(--warn); opacity: .25; }
+/* Plan-Zeichnung im Ziegelwerk-Ton */
+.plan-flaeche .raster line { stroke: var(--line); stroke-width: 1; opacity: .55; }
+.plan-flaeche .boden { fill: var(--card); }
+.plan-flaeche .wand line { stroke: var(--anthrazit); stroke-width: 5; }
+.plan-flaeche .wandnr-kreis { fill: var(--card); stroke: var(--ziegel); stroke-width: 1.5; }
+.plan-flaeche .wandnr { fill: var(--ziegel); font: 600 12px "IBM Plex Mono", monospace; text-anchor: middle; }
+.plan-flaeche .klotz-box { fill: var(--sand); stroke: var(--fuge); stroke-width: 1.5; }
+.plan-flaeche .klotz.aktiv .klotz-box { fill: #E8C9A6; stroke: var(--ziegel); stroke-width: 2.5; }
+.plan-flaeche .klotz-front { stroke: var(--anthrazit); stroke-width: 2; }
+.plan-flaeche .klotz-text { fill: var(--ink); font: 500 11px "Source Sans 3", sans-serif; text-anchor: middle; }
+.plan-flaeche .einbau-sym { fill: var(--ziegel); stroke: var(--ziegel-tief); }
+.plan-flaeche .einbau.aktiv .einbau-sym { fill: var(--signal); stroke: #8a6413; }
+.plan-flaeche .einbau-text { fill: var(--sub); font: 500 10px "IBM Plex Mono", monospace; text-anchor: middle; }
+.plan-flaeche .oeff line { stroke: var(--sand); stroke-width: 5; }
+.plan-flaeche .foto-pin { fill: var(--signal); stroke: #8a6413; }
+.plan-flaeche .mess-linie { stroke: var(--ziegel); stroke-width: 2; stroke-dasharray: 5 4; }
+.plan-flaeche .mess-text { fill: var(--ink); font: 600 12px "IBM Plex Mono", monospace;
+  stroke: var(--card); stroke-width: 3; paint-order: stroke; }
+.plan-flaeche .zone { fill: var(--ok-fg); opacity: .18; }
+.plan-flaeche .zone.warn { fill: var(--ziegel); opacity: .22; }
 
 /* ------------------------------------------------------------ 3D */
-.dreid-flaeche { flex: 1; position: relative; background: #dfeaea; }
+.dreid-flaeche { flex: 1; position: relative; background: #221F1D; }
 .dreid-flaeche canvas { display: block; width: 100%; height: 100%; }
-.dreid-fehler { padding: 30px; text-align: center; color: var(--sanft); }
+.dreid-fehler { padding: 30px; text-align: center; color: var(--sub); }
 
 /* ------------------------------------------------------------ Prüfung */
-.befund { display: flex; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--linie); }
-.befund:last-child { border-bottom: none; }
-.befund-punkt { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center; color: #fff; font-size: 15px; }
-.befund-punkt.ok { background: var(--ok); }
-.befund-punkt.warn { background: var(--warn); }
-.befund-punkt.hinweis { background: var(--amber); }
+.befund { display: flex; gap: 11px; padding: 12px 13px; background: var(--card); }
+.befund-punkt { width: 8px; align-self: stretch; flex: 0 0 auto; border-radius: 1px; }
+.befund-punkt.ok { background: var(--ok-fg); }
+.befund-punkt.warn { background: var(--signal); }
+.befund-punkt.stoss { background: var(--ziegel); }
 .befund-text { flex: 1; }
-.befund-text b { font-size: 14.5px; font-weight: 600; }
-.befund-text span { display: block; font-size: 12.5px; color: var(--sanft); margin-top: 3px; }
-.leer { text-align: center; color: var(--sanft); padding: 40px 20px; }
-.leer svg { width: 54px; height: 54px; color: #d6c8b2; margin-bottom: 10px; }
+.befund-text b { font: 400 14px/1.35 "Source Sans 3", sans-serif; font-weight: 500; color: var(--ink); display: block; }
+.befund-text span { display: block; font: 500 10.5px/1.35 "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--sub); letter-spacing: .04em; margin-top: 4px; }
+.leer { text-align: center; color: var(--sub); padding: 44px 20px; font-size: 14px; }
 
-/* Zusammenfassungs-Banner */
-.banner { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; margin-bottom: 12px; }
-.banner.gut { background: #e9f0dd; color: #4d6a2c; }
-.banner.schlecht { background: #f8e2db; color: var(--warn); }
-.banner b { font-size: 22px; }
+/* Zusammenfassung */
+.banner { display: flex; align-items: center; gap: 12px; padding: 13px; border-radius: 2px;
+  margin-bottom: 12px; border-left: 5px solid; }
+.banner b { font: 600 24px/1 "Zilla Slab", Georgia, serif; }
+.banner.gut { background: var(--ok-bg); color: var(--ok-fg); border-left-color: var(--ok-fg); }
+.banner.schlecht { background: var(--stoss-bg); color: var(--stoss-fg); border-left-color: var(--ziegel); }
 
-/* ------------------------------------------------------------ Sheets */
-.backdrop { position: fixed; inset: 0; background: rgba(30,18,10,.5); z-index: 40; opacity: 0;
-  transition: opacity .22s; }
-.backdrop.zeig { opacity: 1; }
-.sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
-  background: var(--papier); border-radius: 22px 22px 0 0; box-shadow: var(--sheet-schatten);
-  transform: translateY(100%); transition: transform .26s cubic-bezier(.2,.8,.2,1);
-  max-height: 88%; display: flex; flex-direction: column;
-  padding-bottom: var(--sab);
+/* ------------------------------------------------------------ FAB
+   Anthrazit-Block mit Signal-Kante, harte Druckkante. */
+.fab {
+  position: absolute; right: 16px; bottom: calc(20px + var(--sab));
+  min-height: 58px; padding: 0 20px; border-radius: 3px; z-index: 20;
+  background: var(--anthrazit); color: #F6EFE4;
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, .35);
+  font: 600 16px "Zilla Slab", Georgia, serif;
 }
-.sheet.zeig { transform: translateY(0); }
-.sheet-griff { width: 42px; height: 5px; border-radius: 3px; background: #d8c8b2; margin: 10px auto 4px; flex: 0 0 auto; }
-.sheet-kopf { display: flex; align-items: center; justify-content: space-between; padding: 4px 18px 10px; }
-.sheet-kopf h3 { margin: 0; font-size: 18px; }
-.sheet-zu { width: 34px; height: 34px; border-radius: 50%; background: #eadfce; display: grid; place-items: center; color: var(--sanft); }
-.sheet-inhalt { overflow-y: auto; padding: 4px 18px 20px; -webkit-overflow-scrolling: touch; }
+.fab:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
+.fab svg { width: 18px; height: 18px; color: var(--signal); }
 
-/* Menü-/Listeneinträge im Sheet */
-.liste-eintrag { display: flex; align-items: center; gap: 14px; padding: 15px 6px; border-bottom: 1px solid var(--linie); width: 100%; text-align: left; }
-.liste-eintrag:last-child { border-bottom: none; }
-.liste-eintrag svg { width: 22px; height: 22px; color: var(--tk-d); flex: 0 0 auto; }
-.liste-eintrag.aktiv { color: var(--tk); font-weight: 700; }
-.liste-eintrag.gefahr { color: var(--warn); }
-.liste-eintrag.gefahr svg { color: var(--warn); }
+/* ------------------------------------------------------------ Drawer */
+.drawer-schleier { position: fixed; inset: 0; background: rgba(22, 21, 19, .6); z-index: 60;
+  opacity: 0; transition: opacity .18s; }
+.drawer-schleier.zeig { opacity: 1; }
+.drawer {
+  position: fixed; left: 0; top: 0; bottom: 0; width: min(308px, 84vw); z-index: 61;
+  background: var(--bg); display: flex; flex-direction: column;
+  transform: translateX(-100%); transition: transform .22s cubic-bezier(.2, .8, .2, 1);
+  box-shadow: 8px 0 30px rgba(0, 0, 0, .4);
+}
+.drawer.zeig { transform: none; }
+.drawer-kopf { background-color: var(--anthrazit); background-image: var(--mauer);
+  padding: calc(22px + var(--sat)) 16px 18px; }
+.drawer-kopf b { display: block; font: 700 27px/1 "Zilla Slab", Georgia, serif;
+  color: #F6EFE4; letter-spacing: .02em; }
+.drawer-kopf span { display: block; margin-top: 7px;
+  font: 500 9.5px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--sand); letter-spacing: .18em; }
+.drawer-liste { flex: 1; overflow-y: auto; padding: 6px 0; }
+.drawer-eintrag {
+  display: flex; gap: 13px; align-items: center; padding: 14px 16px; min-height: 52px;
+  width: 100%; text-align: left; border-left: 5px solid transparent;
+}
+.drawer-eintrag.an { border-left-color: var(--ziegel); background: var(--chip); }
+.drawer-eintrag:active { background: var(--chip); }
+.drawer-eintrag svg { width: 22px; height: 22px; flex: 0 0 auto; color: var(--ziegel); }
+.drawer-eintrag .de-haupt { flex: 1; min-width: 0; }
+.drawer-eintrag .de-haupt b { display: block; font: 600 16px/1.2 "Source Sans 3", sans-serif; color: var(--ink); }
+.drawer-eintrag .de-haupt span { font: 400 11.5px/1.3 "Source Sans 3", sans-serif; color: var(--sub); }
+.drawer-marke { font: 600 9.5px/1 "IBM Plex Mono", ui-monospace, monospace;
+  padding: 5px 6px; border-radius: 2px; background: var(--ziegel); color: #F6EFE4; }
+.drawer-fuss { border-top: 2px solid var(--line); padding: 13px 16px calc(13px + var(--sab)); }
+.schalter-zeile { display: flex; align-items: center; gap: 11px; min-height: 44px; width: 100%; }
+.schalter { width: 42px; height: 24px; border-radius: 2px; background: var(--sand);
+  position: relative; flex: 0 0 auto; transition: background .18s; }
+.schalter i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  background: var(--kalk); transition: left .18s; display: block; }
+.schalter.an { background: var(--ziegel); }
+.schalter.an i { left: 21px; }
+.schalter-zeile span { flex: 1; text-align: left; font: 400 14px "Source Sans 3", sans-serif; color: var(--ink); }
+/* Der Schalter selbst darf nicht von der generischen span-Regel gedehnt werden. */
+.schalter-zeile .schalter { flex: 0 0 auto; width: 42px; }
+.schalter-zeile svg { flex: 0 0 auto; width: 22px; height: 22px; color: var(--ziegel); }
 
-/* Palette-Gitter */
-.palette-gitter { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.palette-knopf { text-align: left; padding: 14px; border-radius: 14px; border: 1px solid var(--linie);
-  background: var(--karte); box-shadow: var(--schatten); min-height: 66px; }
-.palette-knopf b { display: block; font-size: 14px; }
-.palette-knopf small { color: var(--sanft); font-size: 12px; }
-.palette-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
-.palette-tabs button { flex: 1; height: 40px; border-radius: 20px; background: #efe6d6; color: var(--sanft); font-weight: 600; }
-.palette-tabs button.an { background: var(--tk); color: #fff; }
+/* ------------------------------------------------------------ Sheet */
+.sheet-schleier { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 70;
+  opacity: 0; transition: opacity .2s; }
+.sheet-schleier.zeig { opacity: 1; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 71;
+  background: var(--bg); border-top: 4px solid var(--ziegel);
+  transform: translateY(100%); transition: transform .22s ease-out;
+  max-height: 88%; display: flex; flex-direction: column; padding-bottom: var(--sab);
+}
+.sheet.zeig { transform: none; }
+.sheet-griff { width: 44px; height: 4px; border-radius: 2px; background: var(--sand); margin: 12px auto 4px; flex: 0 0 auto; }
+.sheet-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 16px 10px; }
+.sheet-kopf h3 { margin: 0; font: 600 20px/1.2 "Zilla Slab", Georgia, serif; color: var(--ink); }
+.sheet-zu { width: 44px; height: 44px; border-radius: 2px; background: var(--chip);
+  display: grid; place-items: center; color: var(--sub); flex: 0 0 auto; }
+.sheet-inhalt { overflow-y: auto; padding: 4px 16px 20px; }
 
-/* Richtungswahl (Raum anlegen) */
-.richtung-gitter { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.richtung-knopf { height: 64px; border-radius: 14px; border: 1px solid var(--linie); background: var(--karte);
-  font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--schatten); }
+/* Palette im Sheet */
+.palette-gitter { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.palette-knopf {
+  display: flex; gap: 10px; align-items: center; padding: 12px; min-height: 48px;
+  background: var(--card); border: 1.5px solid var(--line); border-radius: 2px; text-align: left;
+}
+.palette-knopf:active { background: var(--chip); }
+.palette-glyph {
+  width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid var(--ziegel); display: grid; place-items: center;
+  font: 600 10px "IBM Plex Mono", ui-monospace, monospace; color: var(--ziegel);
+}
+.palette-knopf .pk-haupt { flex: 1; min-width: 0; }
+.palette-knopf b { display: block; font: 600 13.5px/1.2 "Source Sans 3", sans-serif; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-knopf small { font: 500 10px/1.2 "IBM Plex Mono", ui-monospace, monospace; color: var(--sub); }
+.palette-tabs { display: flex; gap: 2px; background: var(--fuge); border-radius: 2px; padding: 2px; margin-bottom: 13px; }
+.palette-tabs button { flex: 1; min-height: 44px; font: 600 13.5px "Source Sans 3", sans-serif;
+  color: rgba(241, 233, 221, .8); border-radius: 1px; }
+.palette-tabs button.an { background: var(--kalk); color: var(--anthrazit); }
 
-.hinweis-text { font-size: 13px; color: var(--sanft); margin: 2px 4px 12px; }
+/* Richtungswahl */
+.richtung-gitter { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.richtung-knopf { min-height: 64px; border-radius: 2px; border: 1.5px solid var(--line);
+  background: var(--card); font: 600 15px "Source Sans 3", sans-serif; color: var(--ink);
+  display: flex; align-items: center; justify-content: center; gap: 8px; }
+.richtung-knopf:active { background: var(--chip); }
+
+/* Höhen-Schnellwahl */
+.presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.preset { font: 600 10.5px/1 "IBM Plex Mono", ui-monospace, monospace; padding: 10px 9px;
+  border-radius: 2px; border: 1px solid var(--line); background: var(--card); color: var(--sub); }
+.preset.an { background: var(--ziegel); color: #F6EFE4; border-color: var(--ziegel); }
+
+/* Großer Messwert */
+.messwert { text-align: center; }
+.messwert .wert { font: 600 44px/1.05 "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--ziegel); letter-spacing: -.02em; margin-top: 6px; }
 
 /* ==================================================================
-   Vollbild-Overlays: Scan & AR
-   Diese Ansichten legen sich über die ganze App (auch über die
-   Tab-Leiste). Bedienflächen liegen als Glas über dem Kamerabild,
-   im Daumenbereich unten, mit Rücksicht auf die Safe Areas.
+   Vollbild: Scan & AR – dunkle Baustellenflächen über der Kamera.
    ================================================================== */
-
 .scan-overlay, .ar-overlay {
-  position: fixed; inset: 0; z-index: 1000;
-  background: #0c0a09; overflow: hidden;
-  /* Eigene Typo-Basis: heller Text auf dem Kamerabild. */
-  color: #fff;
+  position: fixed; inset: 0; z-index: 1000; overflow: hidden;
+  background: #161513; color: #F1E9DD;
+  font-family: "Source Sans 3", system-ui, sans-serif;
 }
-.scan-overlay.scan-ohne-kamera, .ar-overlay.ohne-kamera {
-  background: radial-gradient(circle at 50% 32%, #241a13, #0c0a09);
-}
+.scan-overlay.scan-ohne-kamera, .ar-overlay.ohne-kamera { background: #161513; }
 .scan-video, .ar-video, .ar-canvas {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; display: block;
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .scan-grab { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-
+/* Schraffur-Signatur über dem Kamerabild */
+.scan-ui::before, .ar-ui::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: repeating-linear-gradient(112deg, rgba(217, 194, 163, .07) 0 12px, transparent 12px 26px);
+}
 .scan-ui, .ar-ui {
-  position: absolute; inset: 0; z-index: 2;
-  display: flex; flex-direction: column; gap: 12px;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; gap: 11px;
+  padding: calc(12px + var(--sat)) 14px calc(14px + var(--sab));
   pointer-events: none;
 }
-.scan-ui > *, .ar-ui > * { pointer-events: auto; }
+.scan-ui > *, .ar-ui > * { pointer-events: auto; position: relative; }
 
-/* ---------- gemeinsame Glas-Optik ---------- */
+/* dunkle Glas-Tafel – gerade Kanten, Sandlinie */
 .scan-geraet, .scan-lage, .scan-leiste, .ar-hinweis, .ar-regler, .ar-hoehe {
-  background: rgba(18, 14, 12, .62);
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(22, 21, 19, .9); border: 1.5px solid rgba(217, 194, 163, .28); border-radius: 3px;
 }
-
-/* ---------- Kopfzeile ---------- */
 .scan-kopf, .ar-oben { display: flex; align-items: flex-start; gap: 10px; }
 .scan-geraet {
-  flex: 1; min-width: 0; border-radius: 14px; padding: 9px 13px;
-  font-size: 12.5px; line-height: 1.4; color: #f3e9dd;
-  /* Nie mehr als zwei Zeilen – sonst frisst ein langer Gerätename den Schirm. */
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden;
+  flex: 1; min-width: 0; padding: 10px 12px;
+  font: 400 12px/1.4 "IBM Plex Mono", ui-monospace, monospace; color: var(--sand); letter-spacing: .04em;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-.scan-geraet b { color: #fff; font-weight: 700; }
-.scan-geraet .scan-ir { color: #ffc46b; font-weight: 700; }
+.scan-geraet b { color: #F1E9DD; font-weight: 600; }
+.scan-geraet .scan-ir { color: var(--signal); font-weight: 600; }
 .scan-zu, .ar-zu {
-  flex: 0 0 auto; height: 42px; padding: 0 18px; border-radius: 21px;
-  background: rgba(255, 255, 255, .95); color: #2a1a12;
-  font-size: 15px; font-weight: 700; border: none;
+  flex: 0 0 auto; min-height: 44px; padding: 0 18px; border-radius: 3px;
+  background: var(--kalk); color: var(--anthrazit);
+  font: 600 15px "Zilla Slab", Georgia, serif; box-shadow: 0 3px 0 rgba(0, 0, 0, .45);
 }
-.scan-zu:active, .ar-zu:active { background: #e8ded2; }
+.scan-zu:active, .ar-zu:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .45); }
 
-/* ---------- Führung (Kompass + Pfeil) ---------- */
-.scan-fuehrung {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 18px; min-height: 0;
-}
-.scan-pfeil {
-  width: min(62vw, 270px); height: min(62vw, 270px);
-  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .55));
-}
+/* Führung: Kompassring + Pfeil */
+.scan-fuehrung { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 0; }
+.scan-pfeil { width: min(58vw, 250px); height: min(58vw, 250px); }
 .scan-pfeil-dreh { transform-box: fill-box; transform-origin: center; transition: transform .2s ease-out, opacity .2s; }
-.scan-pfeil-dreh path { fill: #d4552c; stroke: #fff; stroke-width: 1.6; }
-.scan-seg { fill: none; stroke: rgba(255, 255, 255, .32); stroke-width: 6; stroke-linecap: round; }
-.scan-seg.voll { stroke: #7ed957; }
-.scan-lage {
-  border-radius: 22px; padding: 10px 18px; font-size: 14.5px;
-  text-align: center; max-width: 94%; color: #fdf6ee;
-}
+.scan-pfeil-dreh path { fill: var(--signal); stroke: #161513; stroke-width: 1.4; }
+.scan-seg { fill: none; stroke: rgba(217, 194, 163, .3); stroke-width: 6; }
+.scan-seg.voll { stroke: var(--signal); }
+.scan-lage { padding: 10px 15px; font: 400 13px/1.4 "Source Sans 3", sans-serif;
+  text-align: center; max-width: 96%; color: #F6EFE4; }
 
-/* ---------- Bedienleiste unten ---------- */
-.scan-leiste {
-  border-radius: 20px; padding: 14px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
-}
-.scan-feld {
-  display: flex; flex-direction: column; gap: 5px;
-  font-size: 11.5px; font-weight: 600; letter-spacing: .03em;
-  text-transform: uppercase; color: #cbb9a6;
-  width: calc(50% - 6px);
-}
-.scan-kante-reihe { display: flex; align-items: center; gap: 7px; font-size: 15px; color: #fff; text-transform: none; }
+/* Bedienleiste */
+.scan-leiste { padding: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 11px; }
+.scan-feld { display: flex; flex-direction: column; gap: 6px; width: calc(50% - 6px);
+  font: 600 10px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--sand); }
+.scan-kante-reihe { display: flex; align-items: center; gap: 7px; color: #F1E9DD;
+  font-size: 14px; text-transform: none; letter-spacing: 0; }
 .scan-leiste input[type="number"], .scan-leiste select {
-  width: 100%; height: 44px; padding: 0 12px; border-radius: 12px;
-  background: rgba(255, 255, 255, .13); color: #fff;
-  border: 1px solid rgba(255, 255, 255, .22); font-size: 15px; text-transform: none;
+  width: 100%; min-height: 44px; padding: 0 11px; border-radius: 2px;
+  background: rgba(217, 194, 163, .14); color: #F1E9DD;
+  border: 1.5px solid rgba(217, 194, 163, .3); text-transform: none; letter-spacing: 0;
+  font: 600 15px "IBM Plex Mono", ui-monospace, monospace;
 }
 .scan-kante { max-width: 92px; }
-.scan-leiste select option { color: #1d1512; }
-
-.scan-fortschritt {
-  position: relative; width: 100%; height: 34px; border-radius: 17px;
-  background: rgba(255, 255, 255, .14); overflow: hidden;
-  display: flex; align-items: center;
-}
-.scan-balken {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
-  background: linear-gradient(90deg, #6fb544, #8fd45c); transition: width .3s ease;
-}
-.scan-zahl {
-  position: relative; margin-left: auto; padding: 0 14px;
-  font-size: 13px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
-}
-
-.scan-auto {
-  flex: 1; width: auto; flex-direction: row; align-items: center; gap: 9px;
-  font-size: 13px; text-transform: none; letter-spacing: 0; color: #ede2d5; font-weight: 500;
-}
-.scan-auto input { width: 22px; height: 22px; accent-color: #d4552c; }
-
+.scan-leiste select option { color: var(--anthrazit); }
+.scan-fortschritt { position: relative; width: 100%; height: 26px;
+  background: rgba(217, 194, 163, .2); overflow: hidden; display: flex; align-items: center; border-radius: 2px; }
+.scan-balken { position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: var(--signal); transition: width .3s linear; }
+.scan-zahl { position: relative; margin-left: auto; padding: 0 11px;
+  font: 600 12px "IBM Plex Mono", ui-monospace, monospace; color: #F1E9DD; }
+.scan-auto { flex: 1; width: auto; flex-direction: row; align-items: center; gap: 9px;
+  font: 400 13px "Source Sans 3", sans-serif; text-transform: none; letter-spacing: 0; color: #EDE2D5; }
+.scan-auto input { width: 22px; height: 22px; accent-color: var(--signal); }
 .scan-schuss {
-  flex: 0 0 auto; width: 72px; height: 72px; border-radius: 50%;
-  background: #fff; color: #1d1512; font-size: 0;
-  border: 5px solid rgba(255, 255, 255, .35); background-clip: padding-box;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+  flex: 0 0 auto; min-width: 96px; min-height: 58px; border-radius: 3px;
+  background: var(--ziegel); color: #F6EFE4;
+  font: 600 17px "Zilla Slab", Georgia, serif; box-shadow: 0 3px 0 var(--ziegel-tief);
 }
-.scan-schuss::after {
-  content: ""; display: block; width: 100%; height: 100%; border-radius: 50%;
-  background: radial-gradient(circle at 50% 38%, #fff, #e6dbcd);
-}
-.scan-schuss:active { transform: scale(.93); }
+.scan-schuss:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ziegel-tief); }
 
-/* ---------- Bildstreifen ---------- */
-.scan-galerie {
-  display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 2px;
-  scrollbar-width: none; flex: 0 0 auto;
-}
+/* Bildstreifen */
+.scan-galerie { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }
 .scan-galerie::-webkit-scrollbar { display: none; }
-.scan-thumb {
-  position: relative; flex: 0 0 auto; width: 62px; height: 62px;
-  border-radius: 12px; overflow: hidden; background: #241c17;
-  border: 1px solid rgba(255, 255, 255, .3);
-}
+.scan-thumb { position: relative; flex: 0 0 auto; width: 62px; height: 62px; border-radius: 2px;
+  overflow: hidden; background: #241C17; border: 1.5px solid rgba(217, 194, 163, .3); }
 .scan-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.scan-nobild { display: grid; place-items: center; height: 100%; color: #9c8a78; font-size: 10px; }
-.scan-thumb-tag {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(transparent, rgba(0, 0, 0, .8));
-  color: #fff; font-size: 10px; font-weight: 600; text-align: center; padding: 6px 0 2px;
-}
+.scan-nobild { display: grid; place-items: center; height: 100%; color: var(--sub); font-size: 10px; }
+.scan-thumb-tag { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(22, 21, 19, .82);
+  color: var(--sand); font: 600 9.5px "IBM Plex Mono", ui-monospace, monospace; text-align: center; padding: 3px 0; }
 
-/* ---------- Abschluss-Dialog ---------- */
-.scan-abschluss {
-  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
-  padding: 22px; background: rgba(10, 7, 5, .72);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-}
-.scan-abschluss-box {
-  background: #f7f2e9; color: #33261c; border-radius: 22px; padding: 22px;
-  max-width: 420px; width: 100%; box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
-}
-.scan-abschluss-box b { font-size: 17px; display: block; }
-.scan-abschluss-box p { color: #7c644e; font-size: 14px; line-height: 1.45; margin: 8px 0 0; }
-.scan-abschluss-knoepfe { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
-.scan-abschluss-knoepfe button {
-  height: 50px; border-radius: 13px; font-size: 15px; font-weight: 700;
-  border: 1px solid #e2d6c4; background: #fff; color: #33261c;
-}
-.scan-abschluss-knoepfe .scan-dl {
-  background: linear-gradient(#c65f3a, #a8431f); color: #fff; border-color: #8f3c1f;
-}
+/* Abschluss */
+.scan-abschluss { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
+  padding: 20px; background: rgba(10, 7, 5, .74); }
+.scan-abschluss-box { background: var(--kalk); color: var(--anthrazit); border-top: 4px solid var(--ziegel);
+  border-radius: 3px; padding: 20px; max-width: 420px; width: 100%; }
+.scan-abschluss-box b { display: block; font: 600 18px/1.25 "Zilla Slab", Georgia, serif; }
+.scan-abschluss-box p { color: var(--fuge); font-size: 13.5px; line-height: 1.45; margin: 8px 0 0; }
+.scan-abschluss-knoepfe { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
+.scan-abschluss-knoepfe button { min-height: 50px; border-radius: 3px;
+  font: 600 15px "Source Sans 3", sans-serif; border: 2px solid var(--sub); color: var(--sub); background: transparent; }
+.scan-abschluss-knoepfe .scan-dl { background: var(--ziegel); color: #F6EFE4; border-color: var(--ziegel);
+  font-family: "Zilla Slab", Georgia, serif; font-size: 16px; box-shadow: 0 3px 0 var(--ziegel-tief); }
 
-/* ==================== AR-Overlay ==================== */
-.ar-palette {
-  flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto;
-  scrollbar-width: none; padding: 2px 0;
-}
+/* ---------------------------- AR ---------------------------- */
+.ar-palette { flex: 1; min-width: 0; display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
 .ar-palette::-webkit-scrollbar { display: none; }
 .ar-chip {
-  flex: 0 0 auto; height: 40px; padding: 0 15px; border-radius: 20px;
-  background: rgba(18, 14, 12, .62);
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  color: #fff; border: 1px solid rgba(255, 255, 255, .2);
-  font-size: 13.5px; white-space: nowrap;
+  flex: 0 0 auto; min-height: 44px; padding: 0 14px; border-radius: 2px;
+  background: rgba(22, 21, 19, .85); color: var(--sand);
+  border: 1.5px solid rgba(217, 194, 163, .3);
+  font: 600 12.5px "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap;
 }
-.ar-chip.aktiv { background: #b5502f; border-color: #d4552c; font-weight: 700; }
-
-/* Der Hinweis trennt Kopf und Bedienteil: alles ab hier rutscht nach unten in
-   den Daumenbereich, die Mitte bleibt freie Sicht auf den Raum. */
-.ar-hinweis {
-  border-radius: 16px; padding: 11px 15px; font-size: 13.5px; line-height: 1.45;
-  color: #fdf6ee; text-align: center; margin: auto auto 0; max-width: 96%;
-}
-.ar-hoehe {
-  border-radius: 16px; padding: 12px 15px;
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-}
+.ar-chip.aktiv { background: var(--ziegel); border-color: var(--ziegel); color: #F6EFE4; }
+/* trennt Kopf und Bedienteil: alles ab hier sitzt unten im Daumenbereich */
+.ar-hinweis { margin: auto auto 0; max-width: 100%; padding: 11px 13px;
+  font: 400 13px/1.42 "Source Sans 3", sans-serif; color: #F6EFE4; text-align: center; }
+.ar-hoehe { padding: 12px 13px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ar-hoehe[hidden] { display: none; }
-.ar-hoehe-name { font-size: 13.5px; font-weight: 700; color: #fff; }
-.ar-hoehe-wert { font-size: 13px; color: #ffc46b; margin-left: auto; font-weight: 600; }
-.ar-hoehe-range { width: 100%; accent-color: #d4552c; height: 30px; }
-
-.ar-regler {
-  border-radius: 18px; padding: 14px 15px;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.ar-regler label {
-  display: flex; align-items: center; gap: 12px;
-  font-size: 12px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .04em; color: #cbb9a6;
-}
-.ar-regler input[type="range"] { flex: 1; accent-color: #d4552c; height: 30px; }
-.ar-xr {
-  height: 46px; border-radius: 13px; border: none;
-  background: linear-gradient(#c65f3a, #a8431f); color: #fff;
-  font-size: 15px; font-weight: 700;
-}
+.ar-hoehe-name { font: 600 15px "Zilla Slab", Georgia, serif; color: #F1E9DD; }
+.ar-hoehe-wert { margin-left: auto; font: 600 20px "IBM Plex Mono", ui-monospace, monospace; color: var(--signal); }
+.ar-hoehe-range { width: 100%; accent-color: var(--signal); height: 32px; }
+.ar-regler { padding: 13px; display: flex; flex-direction: column; gap: 9px; }
+.ar-regler label { display: flex; align-items: center; gap: 12px;
+  font: 600 10px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--sand); }
+.ar-regler input[type="range"] { flex: 1; accent-color: var(--signal); height: 32px; }
+.ar-xr { min-height: 48px; border-radius: 3px; background: var(--ziegel); color: #F6EFE4;
+  font: 600 15px "Zilla Slab", Georgia, serif; box-shadow: 0 3px 0 var(--ziegel-tief); }
 .ar-xr[hidden] { display: none; }
 
-/* Auf sehr flachen Schirmen (Querformat) die Führung kompakter halten. */
 @media (max-height: 560px) {
   .scan-pfeil { width: min(34vh, 170px); height: min(34vh, 170px); }
-  .scan-fuehrung { gap: 10px; }
+  .scan-fuehrung { gap: 8px; }
   .scan-galerie { display: none; }
 }
