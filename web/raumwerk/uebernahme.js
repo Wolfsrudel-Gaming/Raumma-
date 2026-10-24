@@ -143,5 +143,18 @@ export function nachmessen(projekt, raumId, wandIndex, laengeM, neueId) {
   return hinweise;
 }
 
+/**
+ * Raumhöhe (ab Fertigfußboden) von Hand setzen. Bei gezielt aufgenommenen
+ * Räumen geht sie auch in die Aufnahme ein – als bekannte Höhe über dem
+ * gezielten Boden –, damit ein späteres Nachmessen sie nicht überschreibt.
+ */
+export function raumhoeheSetzen(raum, hoeheM) {
+  const h = Number(hoeheM);
+  if (!raum || !(h > 0)) return;
+  raum.hoeheM = runde(h);
+  const a = raum.aufnahme;
+  if (a && a.methode === "zielen") a.raumhoeheM = h + (a.boden === "roh" ? (Number(raum.aufbauM) || 0) : 0);
+}
+
 function vorher(liste, id) { return liste.find(x => x.id === id) || {}; }
 const runde = v => Math.round(v * 100) / 100;
