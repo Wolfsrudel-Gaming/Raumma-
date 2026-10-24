@@ -29,10 +29,11 @@ await cp(webDir, zielDir, {
 });
 
 // Capacitor erwartet die Start-Seite als index.html im www-Wurzelverzeichnis.
-// Die RAUMWERK-App liegt unter web/raumwerk/ – eine Weiterleitung an die Wurzel.
+// Auf dem Handy ist das die Feld-App (web/raumwerk/mobil/), nicht die
+// PC-Oberfläche – genau wie in der ausgelieferten Android-Hülle (android-app/).
 const weiterleitung = `<!doctype html><meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=./raumwerk/index.html">
-<title>RAUMWERK</title><a href="./raumwerk/index.html">RAUMWERK öffnen</a>`;
+<meta http-equiv="refresh" content="0; url=./raumwerk/mobil/index.html">
+<title>RAUMWERK</title><a href="./raumwerk/mobil/index.html">RAUMWERK öffnen</a>`;
 await (await import("node:fs/promises")).writeFile(join(zielDir, "index.html"), weiterleitung);
 
 console.log("Web-App nach www/ kopiert.");

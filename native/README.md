@@ -1,5 +1,12 @@
 # RAUMWERK – native Apps (Android & iOS)
 
+> **Hinweis:** Die ausgelieferte Android-App ist die eigene Hülle unter
+> [`../android-app/`](../android-app/README.md) (WebView + `NativeBridge` mit
+> Spiel-Rotationsvektor, Teilen, Drucken, Dateiauswahl). Capacitor ist der Weg
+> für **iOS** bzw. als Alternative; beide zeigen die Feld-App `web/raumwerk/mobil/`.
+> Teilen/Drucken fallen unter Capacitor auf die Web-Wege zurück (Web Share,
+> Browser-Druck) – die nativen Brückenmethoden gibt es dort noch nicht.
+
 Neben der Weboberfläche gibt es **eine verlinkte Android- und iOS-App**. Sie
 sind bewusst **dünne Hüllen um dieselbe Web-App** (`../web`), erstellt mit
 [Capacitor](https://capacitorjs.com/). So gibt es nur *eine* Codebasis –

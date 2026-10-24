@@ -30,5 +30,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Gibt Export-Dateien ans Teilen-Menü und ein Ziel fürs Kamerafoto
+             frei – nur die Ordner aus res/xml/dateien.xml, nur auf Zeit. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.dateien"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/dateien" />
+        </provider>
     </application>
 </manifest>

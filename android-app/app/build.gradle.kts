@@ -11,8 +11,8 @@ android {
         applicationId = "de.raumwerk.app"
         minSdk = 26            // Android 8 – reicht für Adaptive Icons und WebViewAssetLoader
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.4.0"
     }
 
     // Fester, eingecheckter Signierschlüssel. Wichtig: sonst erzeugt jeder
@@ -47,6 +47,8 @@ dependencies {
     // Nur die WebView-Erweiterungen: AssetLoader (virtueller HTTPS-Origin →
     // ES-Module + Kamera funktionieren) und WebViewClientCompat.
     implementation("androidx.webkit:webkit:1.11.0")
+    // FileProvider: Export teilen und Kamerafotos für <input type=file>.
+    implementation("androidx.core:core:1.13.1")
 }
 
 // Die Web-App VOR dem Build nach assets/ kopieren – so ist die App die eine

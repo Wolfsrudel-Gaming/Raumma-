@@ -54,5 +54,10 @@ eq("biegeradius 195mm", b.text.includes("195 mm"), true);
 // Unbekannte Komponente -> übersprungen
 eq("unbekannt leer", pruefe(raum, [{ id: "x", komponente: "GIBTESNICHT", xM: 2, yM: 1.5 }]).length, 0);
 
+// Allein im Raum: „frei“, nie die Platzhalterzahl 9999 cm
+const allein = pruefe(raum, [{ id: "hz", komponente: "THERME", xM: 2, yM: 1.5, drehungGrad: 0 }]);
+eq("kein 9999 cm im Text", allein.some(b => /9999/.test(b.text)), false);
+eq("rundum frei", allein.some(b => b.regelId && /frei – kein Nachbarbauteil/.test(b.text)), true);
+
 console.log(`pruefung.test: ${ok} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

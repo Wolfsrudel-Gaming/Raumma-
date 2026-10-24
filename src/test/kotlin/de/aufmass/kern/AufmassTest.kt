@@ -146,6 +146,66 @@ class AufmassTest {
         assertNull(Aufmass.zeileLesen(""))
         assertNull(Aufmass.zeileLesen("# nur ein Kommentar"))
     }
+
+    @Test
+    fun `fast rechte Winkel werden rechtwinklig, schiefe bleiben`() {
+        val roh = listOf(
+            Aufmass.Wand(5.02, 88.7), Aufmass.Wand(3.98, 91.5), Aufmass.Wand(2.0, 135.0),
+            Aufmass.Wand(4.97, -89.6), Aufmass.Wand(4.01, 3.0)
+        )
+        val glatt = Aufmass.rechtwinklig(roh)
+        assertEquals(listOf(90.0, 90.0, 135.0, -90.0, 0.0), glatt.map { it.drehungGrad })
+        assertEquals(roh.map { it.laengeM }, glatt.map { it.laengeM })     // Längen bleiben
+        // Mit enger Toleranz bleibt die 91,5°-Ecke stehen.
+        assertEquals(91.5, Aufmass.rechtwinklig(roh, 1.0)[1].drehungGrad)
+    }
+
+    @Test
+    fun `Ausgleich schliesst den Zug und laesst gemessene Waende stehen`() {
+        // Wände 1 und 2 mit dem Bandmaß (6,00 / 4,00), 3 und 4 gezielt.
+        val skizze = listOf(
+            Aufmass.Wand(6.00, 90.0), Aufmass.Wand(4.00, 90.0),
+            Aufmass.Wand(5.88, 90.0), Aufmass.Wand(4.09, 90.0)
+        )
+        val a = Aufmass.ausgleichen(skizze, setOf(0, 1))
+        nah(0.15, a.restlueckeVorherM)
+        nah(0.0, a.restlueckeNachherM, 1e-9)
+        assertEquals(6.00, a.waende[0].laengeM)
+        assertEquals(4.00, a.waende[1].laengeM)
+        nah(6.00, a.waende[2].laengeM, 1e-9)
+        nah(4.00, a.waende[3].laengeM, 1e-9)
+        nah(0.12, a.korrekturM[2], 1e-9)
+        nah(-0.09, a.korrekturM[3], 1e-9)
+        assertTrue(Aufmass.zug(a.waende).geschlossen)
+    }
+
+    @Test
+    fun `parallele freie Waende schliessen nur ihren Anteil der Luecke`() {
+        // Die festen Seitenwände widersprechen sich (4,00 / 4,05): diese 5 cm
+        // kann keine Längs-Wand schließen – sie bleiben als Restlücke sichtbar.
+        val a = Aufmass.ausgleichen(
+            listOf(
+                Aufmass.Wand(6.0, 90.0), Aufmass.Wand(4.0, 90.0),
+                Aufmass.Wand(5.9, 90.0), Aufmass.Wand(4.05, 90.0)
+            ),
+            setOf(1, 3)
+        )
+        nah(5.95, a.waende[0].laengeM, 1e-9)
+        nah(5.95, a.waende[2].laengeM, 1e-9)
+        nah(0.05, a.restlueckeNachherM, 1e-9)
+    }
+
+    @Test
+    fun `ohne feste Waende wird ein L-Raum mit kleinsten Aenderungen geschlossen`() {
+        val skizze = listOf(
+            Aufmass.Wand(5.03, 90.0), Aufmass.Wand(4.02, 90.0), Aufmass.Wand(2.96, 90.0),
+            Aufmass.Wand(2.48, -90.0), Aufmass.Wand(2.01, 90.0), Aufmass.Wand(1.53, 90.0)
+        )
+        val a = Aufmass.ausgleichen(skizze)
+        nah(0.0, a.restlueckeNachherM, 1e-9)
+        assertTrue(a.korrekturM.all { abs(it) < 0.03 }, "Korrekturen klein: ${a.korrekturM}")
+        nah(15.0, Aufmass.flaeche(Aufmass.zug(a.waende).punkte), 0.25)   // 5×4 − 2×2,5
+    }
 }
 
 class PlatzierungTest {

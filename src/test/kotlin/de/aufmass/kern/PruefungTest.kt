@@ -119,4 +119,14 @@ class PruefungTest {
         )
         assertEquals(emptyList(), Pruefung.pruefe(raum, listOf(ph)))
     }
+
+    @Test
+    fun `allein im Raum heisst frei, nicht 9999 cm`() {
+        val raum = Raum(name = "Technik", breiteM = BigDecimal("4"), tiefeM = BigDecimal("3"))
+        val ph = Pruefung.Platzhalter(raumId = raum.id, komponente = "THERME",
+            xM = BigDecimal("2.0"), yM = BigDecimal("1.5"), drehungGrad = BigDecimal("0"))
+        val befunde = Pruefung.pruefe(raum, listOf(ph))
+        assertTrue(befunde.none { "9999" in it.text }, befunde.joinToString { it.text })
+        assertTrue(befunde.any { "frei – kein Nachbarbauteil" in it.text }, befunde.joinToString { it.text })
+    }
 }

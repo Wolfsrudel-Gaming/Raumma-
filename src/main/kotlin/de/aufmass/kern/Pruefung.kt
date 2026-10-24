@@ -210,10 +210,12 @@ object Pruefung {
                     befunde += Befund(
                         ph.id, komp.name, regel.id, regel.titel, regel.quelle, regel.richtung,
                         regel.abstandM, verf, if (ok) Schwere.OK else Schwere.WARNUNG,
-                        if (ok) "Freiraum vor ${komp.name}: mind. ${zeigeCm(verf)} " +
-                            "(gefordert ${zeigeCm(regel.abstandM)})."
-                        else "${komp.name} unterschreitet den Freiraum davor: nur mind. " +
+                        if (!ok) "${komp.name} unterschreitet den Freiraum davor: nur mind. " +
                             "${zeigeCm(verf)} statt ${zeigeCm(regel.abstandM)}."
+                        else if (verf >= UNBEGRENZT) "Freiraum vor ${komp.name}: frei – kein Hindernis " +
+                            "davor (gefordert ${zeigeCm(regel.abstandM)})."
+                        else "Freiraum vor ${komp.name}: mind. ${zeigeCm(verf)} " +
+                            "(gefordert ${zeigeCm(regel.abstandM)})."
                     )
                 }
 
@@ -229,10 +231,12 @@ object Pruefung {
                     befunde += Befund(
                         ph.id, komp.name, regel.id, regel.titel, regel.quelle, regel.richtung,
                         regel.abstandM, verf, if (ok) Schwere.OK else Schwere.WARNUNG,
-                        if (ok) "Abstand von ${komp.name} rundum: mind. ${zeigeCm(verf)} " +
-                            "(gefordert ${zeigeCm(regel.abstandM)})."
-                        else "${komp.name} zu nah an ${nachbar ?: "Nachbarbauteil"}: nur mind. " +
+                        if (!ok) "${komp.name} zu nah an ${nachbar ?: "Nachbarbauteil"}: nur mind. " +
                             "${zeigeCm(verf)} statt ${zeigeCm(regel.abstandM)}."
+                        else if (naechster == null) "Abstand von ${komp.name} rundum: frei – kein " +
+                            "Nachbarbauteil (gefordert ${zeigeCm(regel.abstandM)})."
+                        else "Abstand von ${komp.name} rundum: mind. ${zeigeCm(verf)} " +
+                            "(gefordert ${zeigeCm(regel.abstandM)})."
                     )
                 }
             }
@@ -256,8 +260,11 @@ object Pruefung {
         ecken.indices.map { Segment(ecken[it], ecken[(it + 1) % ecken.size]) }
 
     /** Rundet konservativ: (roh − Toleranz), auf ganze cm abgerundet, nie negativ. */
+    /** Platzhalterwert von [konservativ] für „kein Hindernis“ – nie als Maß anzeigen. */
+    val UNBEGRENZT: BigDecimal = BigDecimal("99.99")
+
     fun konservativ(rohM: Double): BigDecimal {
-        if (rohM >= Double.MAX_VALUE / 2) return BigDecimal("99.99")
+        if (rohM >= Double.MAX_VALUE / 2) return UNBEGRENZT
         val abzueglich = rohM - toleranzM.toDouble()
         // Epsilon vor dem Abrunden: fängt reines Fließkomma-Rauschen ab
         // (0,98 darf nicht durch 97,999… auf 0,97 fallen), ohne die untere

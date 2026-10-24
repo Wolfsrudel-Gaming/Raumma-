@@ -1,5 +1,12 @@
 # RAUMWERK · Referenzblock 250 mm — Bau- und Druckkonzept
 
+> **Stand: optional.** Für das Aufmaß wird der Block nicht gebraucht – die App
+> misst Räume per Zielen mit dem Handy, Maßband oder Laser, den Maßstab setzt
+> ein einziges bekanntes Maß (siehe [AUFMASS.md](AUFMASS.md)). AR richtet sich
+> an zwei gezielten Raumecken aus. Der Block bleibt ein Zubehör für die
+> spätere Photogrammetrie (Schicht ②); eine Marker-Erkennung ist noch nicht
+> gebaut. Das Folgende beschreibt ihn als Konzept.
+
 Der Referenzblock ist das einzige physische Zubehör des Systems. Er wird in den
 Raum gestellt und übernimmt **drei Aufgaben gleichzeitig** (Konzept v2 §8):
 

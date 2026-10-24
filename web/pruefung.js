@@ -117,8 +117,9 @@ export function pruefe(raum, platzhalter, regeln = REGELN) {
         const verf = konservativ(roh);
         const ok = verf >= regel.abstandM;
         befunde.push(befund(ph, komp, regel, verf, ok,
-          ok ? `Freiraum vor ${komp.name}: mind. ${cm(verf)} (gefordert ${cm(regel.abstandM)}).`
-            : `${komp.name} unterschreitet den Freiraum davor: nur mind. ${cm(verf)} statt ${cm(regel.abstandM)}.`));
+          !ok ? `${komp.name} unterschreitet den Freiraum davor: nur mind. ${cm(verf)} statt ${cm(regel.abstandM)}.`
+            : verf >= UNBEGRENZT_M ? `Freiraum vor ${komp.name}: frei – kein Hindernis davor (gefordert ${cm(regel.abstandM)}).`
+              : `Freiraum vor ${komp.name}: mind. ${cm(verf)} (gefordert ${cm(regel.abstandM)}).`));
       } else if (regel.richtung === Richtung.RUNDUM) {
         const eigen = grundriss(ph, komp);
         let naechster = null, best = Number.MAX_VALUE;
@@ -131,8 +132,9 @@ export function pruefe(raum, platzhalter, regeln = REGELN) {
         const ok = verf >= regel.abstandM;
         const nachbar = naechster ? naechster.komp.name : "Nachbarbauteil";
         befunde.push(befund(ph, komp, regel, verf, ok,
-          ok ? `Abstand von ${komp.name} rundum: mind. ${cm(verf)} (gefordert ${cm(regel.abstandM)}).`
-            : `${komp.name} zu nah an ${nachbar}: nur mind. ${cm(verf)} statt ${cm(regel.abstandM)}.`));
+          !ok ? `${komp.name} zu nah an ${nachbar}: nur mind. ${cm(verf)} statt ${cm(regel.abstandM)}.`
+            : !naechster ? `Abstand von ${komp.name} rundum: frei – kein Nachbarbauteil (gefordert ${cm(regel.abstandM)}).`
+              : `Abstand von ${komp.name} rundum: mind. ${cm(verf)} (gefordert ${cm(regel.abstandM)}).`));
       }
     }
   }
@@ -158,6 +160,9 @@ export function wandSegmente(raum) {
 export function boxSegmente(ecken4) {
   return ecken4.map((a, i) => ({ a, b: ecken4[(i + 1) % ecken4.length] }));
 }
+
+/** Platzhalterwert von `konservativ` für „kein Hindernis“ – nie als Maß anzeigen. */
+export const UNBEGRENZT_M = 99.99;
 
 /** Konservativ: (roh − Toleranz), auf ganze cm abgerundet, nie negativ. */
 export function konservativ(rohM) {

@@ -71,6 +71,100 @@ object Aufmass {
         return Zug(normieren(punkte), luecke, !geschlossen)
     }
 
+    /**
+     * Setzt Drehungen, die nahe an einem Vielfachen von 90° liegen, auf genau
+     * diesen Wert.
+     *
+     * Gezielte oder geschätzte Winkel streuen um ein, zwei Grad; die meisten
+     * Räume sind trotzdem rechtwinklig. Wer das annimmt, gewinnt viel: Die
+     * Form ist dann allein durch die Längen bestimmt, und die lassen sich mit
+     * dem Bandmaß genau nehmen. Was deutlich schief ist (Erker, 135°-Ecke),
+     * bleibt unangetastet.
+     */
+    fun rechtwinklig(waende: List<Wand>, toleranzGrad: Double = 8.0): List<Wand> =
+        waende.map { w ->
+            val ziel = Math.round(w.drehungGrad / 90.0) * 90.0
+            if (abs(w.drehungGrad - ziel) <= toleranzGrad) w.copy(drehungGrad = ziel) else w
+        }
+
+    /**
+     * Ergebnis eines Ausgleichs: die neuen Wände, die Änderung je Wand und die
+     * Restlücke vorher/nachher. [korrekturM] gehört in die Oberfläche – wer
+     * sieht, dass eine Wand um 12 cm verschoben wurde, misst sie nach.
+     */
+    data class Ausgleich(
+        val waende: List<Wand>,
+        val korrekturM: List<Double>,
+        val restlueckeVorherM: Double,
+        val restlueckeNachherM: Double
+    )
+
+    /**
+     * Schließt einen Zug, ohne die gemessenen Wände anzufassen.
+     *
+     * Die Richtungen bleiben, wie sie sind. Die Längen der Wände, die **nicht**
+     * in [fest] stehen, werden so wenig wie möglich geändert (kleinste
+     * Quadrate), dass die Restlücke verschwindet:
+     *
+     *     Σ δᵢ·uᵢ = −Lücke,   Σ δᵢ² → min,   δᵢ = 0 für feste Wände
+     *
+     * mit uᵢ der Richtung von Wand i. Lösung: δ = Uᵀ(UUᵀ)⁻¹(−Lücke). Laufen alle
+     * freien Wände parallel, lässt sich nur der Anteil der Lücke in ihrer
+     * Richtung schließen – der Rest bleibt als ehrliche Restlücke stehen.
+     *
+     * Damit wird aus einer gezielten Skizze plus ein paar Bandmaßen ein
+     * geschlossener Raum, in dem jedes gemessene Maß exakt stimmt.
+     */
+    fun ausgleichen(waende: List<Wand>, fest: Set<Int> = emptySet()): Ausgleich {
+        val richtungen = mutableListOf<Double>()
+        var r = 0.0
+        for (w in waende) { richtungen += Math.toRadians(r); r += w.drehungGrad }
+        fun luecke(l: List<Double>): Pair<Double, Double> {
+            var gx = 0.0
+            var gy = 0.0
+            l.forEachIndexed { i, len -> gx += len * cos(richtungen[i]); gy += len * sin(richtungen[i]) }
+            return gx to gy
+        }
+        val laengen = waende.map { it.laengeM }
+        val (gx, gy) = luecke(laengen)
+        val frei = waende.indices.filter { it !in fest }
+        var m00 = 0.0
+        var m01 = 0.0
+        var m11 = 0.0
+        for (i in frei) {
+            val c = cos(richtungen[i])
+            val s = sin(richtungen[i])
+            m00 += c * c; m01 += c * s; m11 += s * s
+        }
+        // Pseudo-Inverse der 2×2-Matrix M = UUᵀ.
+        val det = m00 * m11 - m01 * m01
+        val spur = m00 + m11
+        val (p00, p01, p11) = when {
+            det > 1e-9 -> Triple(m11 / det, -m01 / det, m00 / det)
+            spur > 1e-9 -> {
+                // Rang 1: alle freien Wände parallel. M = spur·e·eᵀ.
+                val (ex, ey) = if (m00 >= m11) m00 to m01 else m01 to m11
+                val n = hypot(ex, ey)
+                val (x, y) = (ex / n) to (ey / n)
+                Triple(x * x / spur, x * y / spur, y * y / spur)
+            }
+            else -> Triple(0.0, 0.0, 0.0)
+        }
+        val lx = -(p00 * gx + p01 * gy)
+        val ly = -(p01 * gx + p11 * gy)
+        val korrektur = waende.indices.map { i ->
+            if (i in fest) 0.0 else cos(richtungen[i]) * lx + sin(richtungen[i]) * ly
+        }
+        val neu = laengen.mapIndexed { i, l -> maxOf(0.0, l + korrektur[i]) }
+        val (nx, ny) = luecke(neu)
+        return Ausgleich(
+            waende.mapIndexed { i, w -> w.copy(laengeM = neu[i]) },
+            korrektur,
+            hypot(gx, gy),
+            hypot(nx, ny)
+        )
+    }
+
     /** Verschiebt einen Umriss auf den Nullpunkt und rundet auf Zentimeter. */
     fun normieren(punkte: List<Punkt>): List<Punkt> {
         if (punkte.isEmpty()) return punkte

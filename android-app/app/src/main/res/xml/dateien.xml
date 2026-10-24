@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Freigaben für den FileProvider: nur diese Cache-Ordner verlassen die App. -->
+<paths>
+    <!-- Export/Report, über das Teilen-Menü weitergegeben (NativeBridge.teilen) -->
+    <cache-path name="teilen" path="teilen/" />
+    <!-- Kamerafotos für <input type=file accept=image/*> (MainActivity) -->
+    <cache-path name="fotos" path="fotos/" />
+</paths>

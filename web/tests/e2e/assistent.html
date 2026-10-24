@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testseite · Aufmaß-Assistent</title>
+  <!-- Prüfstand für den Assistenten ohne restliche App (E2E-Test). -->
+  <script src="../../raumwerk/native.js"></script>
+</head>
+<body style="margin:0;font-family:system-ui,sans-serif">
+  <pre id="ergebnis" style="white-space:pre-wrap;padding:12px"></pre>
+  <script type="module">
+    import { starteAssistent } from "../../raumwerk/assistent.js";
+    const start = new URLSearchParams(location.search).get("start") || undefined;
+    window.__ergebnis = null;
+    window.__starte = () => starteAssistent({
+      raum: { name: "Prüfraum", aufbauM: 0 }, start,
+      onUebernehmen: e => { window.__ergebnis = e; document.getElementById("ergebnis").textContent = JSON.stringify(e, null, 1); },
+      onAbbruch: () => { window.__ergebnis = "abbruch"; }
+    });
+    window.__starte();
+  </script>
+</body>
+</html>

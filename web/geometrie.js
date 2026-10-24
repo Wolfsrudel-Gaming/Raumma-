@@ -239,6 +239,63 @@ export function waende(punkte) {
   return liste;
 }
 
+/**
+ * Drehungen nahe an Vielfachen von 90° auf genau diese setzen. Spiegel von
+ * `Aufmass.rechtwinklig` – gezielte Winkel streuen, die meisten Räume sind
+ * trotzdem rechtwinklig; deutlich schiefe Ecken bleiben stehen.
+ */
+export function rechtwinklig(waende, toleranzGrad = 8) {
+  return waende.map(w => {
+    const ziel = Math.round(w.drehung / 90) * 90;
+    return Math.abs(w.drehung - ziel) <= toleranzGrad ? { ...w, drehung: ziel + 0 } : { ...w };
+  });
+}
+
+/**
+ * Schließt einen Zug, ohne die Wände in `fest` (Indizes) anzufassen – Spiegel
+ * von `Aufmass.ausgleichen`. Richtungen bleiben; die freien Längen ändern sich
+ * so wenig wie möglich (kleinste Quadrate), bis die Restlücke verschwindet.
+ * Laufen alle freien Wände parallel, bleibt der nicht schließbare Teil als
+ * ehrliche Restlücke stehen.
+ */
+export function ausgleichen(waende, fest = []) {
+  const festSet = new Set(fest);
+  const richtungen = [];
+  let r = 0;
+  for (const w of waende) { richtungen.push(r * Math.PI / 180); r += Number(w.drehung) || 0; }
+  const luecke = l => {
+    let gx = 0, gy = 0;
+    l.forEach((len, i) => { gx += len * Math.cos(richtungen[i]); gy += len * Math.sin(richtungen[i]); });
+    return [gx, gy];
+  };
+  const laengen = waende.map(w => Number(w.laenge) || 0);
+  const [gx, gy] = luecke(laengen);
+  let m00 = 0, m01 = 0, m11 = 0;
+  waende.forEach((_, i) => {
+    if (festSet.has(i)) return;
+    const c = Math.cos(richtungen[i]), s = Math.sin(richtungen[i]);
+    m00 += c * c; m01 += c * s; m11 += s * s;
+  });
+  const det = m00 * m11 - m01 * m01, spur = m00 + m11;
+  let p00 = 0, p01 = 0, p11 = 0;
+  if (det > 1e-9) { p00 = m11 / det; p01 = -m01 / det; p11 = m00 / det; }
+  else if (spur > 1e-9) {
+    const [ex, ey] = m00 >= m11 ? [m00, m01] : [m01, m11];
+    const n = Math.hypot(ex, ey), x = ex / n, y = ey / n;
+    p00 = x * x / spur; p01 = x * y / spur; p11 = y * y / spur;
+  }
+  const lx = -(p00 * gx + p01 * gy), ly = -(p01 * gx + p11 * gy);
+  const korrektur = waende.map((_, i) => festSet.has(i) ? 0 : Math.cos(richtungen[i]) * lx + Math.sin(richtungen[i]) * ly);
+  const neu = laengen.map((l, i) => Math.max(0, l + korrektur[i]));
+  const [nx, ny] = luecke(neu);
+  return {
+    waende: waende.map((w, i) => ({ ...w, laenge: neu[i] })),
+    korrektur,
+    restlueckeVorher: Math.hypot(gx, gy),
+    restlueckeNachher: Math.hypot(nx, ny)
+  };
+}
+
 /** Auf den Nullpunkt schieben und auf Zentimeter runden. */
 export function normieren(punkte) {
   if (!punkte.length) return punkte;
