@@ -322,6 +322,12 @@ export function kantenhoeheM(vUnten, vOben, p, tUnten, tOben) {
  * einmal normal und einmal mit dem Handy um 180° um die Kameraachse gedreht
  * (auf dem Kopf) anzielen. Der Fehler wechselt dabei das Vorzeichen, das Ziel
  * nicht: δ = (θ₁ − θ₂)/2. Ergebnis in Grad.
+ *
+ * Die Formel setzt voraus, dass die Linse beim Umdrehen an ihrem Platz bleibt.
+ * Wandert sie um e vom Drehpunkt weg (Linse 2e höher oder tiefer), verfälscht
+ * das δ um ≈ e/D bei Zielentfernung D: 1 cm auf 2 m ≈ 0,3°, auf 10 m ≈ 0,06°.
+ * Deshalb: fernes Ziel (≥ 10 m, durchs Fenster, den Flur hinunter), Handykante
+ * an einer festen Kante anlegen, zwei Wendepaare vergleichen.
  */
 export function neigungsfehlerGrad(vNormal, vGewendet) {
   return (neigungGrad(vNormal) - neigungGrad(vGewendet)) / 2;

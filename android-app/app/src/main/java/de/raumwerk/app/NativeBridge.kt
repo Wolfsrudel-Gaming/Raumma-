@@ -82,6 +82,11 @@ class NativeBridge(
     private var pausiert = false      // Activity im Hintergrund → nichts anmelden
     private val quatLage = FloatArray(4)
     private var letzterLagePush = 0L
+    // Epoche der Lage: zählt bei jedem (Wieder-)Anmelden des Hörers hoch. Der
+    // Spiel-Rotationsvektor startet dabei frisch (AOSP-Fusion: neue Gier-Null je
+    // nach Haltung) – Blickrichtungen verschiedener Epochen passen nicht
+    // zusammen. JS (ar.js, assistent.js) richtet bei einem Wechsel neu aus.
+    private var lageEpoche = 0
     private val lageHoerer = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) = lageEmpfangen(e)
         override fun onAccuracyChanged(s: Sensor?, a: Int) {}
@@ -217,7 +222,7 @@ class NativeBridge(
         }
     }
 
-    /** onResume: Sensorik wieder an, die Lage nur, wenn JS sie gestartet hatte. */
+    /** onResume: Sensorik wieder an, die Lage nur, wenn JS sie gestartet hatte (neue Epoche). */
     fun fortsetzen() {
         web.post {
             pausiert = false
@@ -280,6 +285,7 @@ class NativeBridge(
             ?: return
         // 100 Hz abtasten, höchstens ~60 Hz an JS: so ist jeder Push frisch.
         lageAktiv = sm.registerListener(lageHoerer, s, 10_000)
+        if (lageAktiv) lageEpoche++
     }
 
     private fun lageAus() {
@@ -363,7 +369,7 @@ class NativeBridge(
 
     override fun onAccuracyChanged(s: Sensor?, a: Int) {}
 
-    /** Lage zum Messen: nur das Quaternion, dafür feiner aufgelöst und schneller. */
+    /** Lage zum Messen: Quaternion (feiner aufgelöst, schneller) und seine Epoche. */
     private fun lageEmpfangen(e: SensorEvent) {
         val t = e.sensor.type
         if (t != Sensor.TYPE_GAME_ROTATION_VECTOR && t != Sensor.TYPE_ROTATION_VECTOR) return
@@ -372,7 +378,7 @@ class NativeBridge(
         letzterLagePush = now
         SensorManager.getQuaternionFromVector(quatLage, e.values) // [w, x, y, z]
         val j = "{\"qs\":[${z(quatLage[0].toDouble(), 6)},${z(quatLage[1].toDouble(), 6)}," +
-            "${z(quatLage[2].toDouble(), 6)},${z(quatLage[3].toDouble(), 6)}]}"
+            "${z(quatLage[2].toDouble(), 6)},${z(quatLage[3].toDouble(), 6)}],\"epoche\":$lageEpoche}"
         anJs("Lage", j)
     }
 

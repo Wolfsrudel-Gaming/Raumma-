@@ -196,6 +196,50 @@ class AufmassTest {
     }
 
     @Test
+    fun `fast parallele freie Waende lassen den Queranteil als Restluecke stehen`() {
+        // Trapez mit 1,9° Schräge, Bandmaß vorne 4,02 / hinten 4,10. Die volle
+        // Inverse drückte die 2 cm mit 1/sin α in die Seitenwände (3,00 → 2,40).
+        val a = Aufmass.ausgleichen(
+            listOf(
+                Aufmass.Wand(4.02, 90.0), Aufmass.Wand(3.0, 90.0),
+                Aufmass.Wand(4.10, 91.91), Aufmass.Wand(3.0017, 88.09)
+            ),
+            setOf(0, 2)
+        )
+        nah(3.0, a.waende[1].laengeM, 0.002)
+        nah(3.0017, a.waende[3].laengeM, 0.002)
+        nah(0.02, a.restlueckeNachherM, 0.001)
+    }
+
+    @Test
+    fun `deutlich schiefe freie Waende schliessen weiterhin voll`() {
+        val a = Aufmass.ausgleichen(
+            listOf(
+                Aufmass.Wand(4.02, 90.0), Aufmass.Wand(3.0, 90.0),
+                Aufmass.Wand(5.0919, 110.0), Aufmass.Wand(3.1925, 70.0)
+            ),
+            setOf(0, 2)
+        )
+        nah(0.0, a.restlueckeNachherM, 1e-9)
+        nah(-0.055, a.korrekturM[1], 0.001)
+        nah(-0.0585, a.korrekturM[3], 0.001)
+    }
+
+    @Test
+    fun `Pseudo-Inverse nimmt bei fast singulaerer Matrix nur den Haupt-Eigenvektor`() {
+        val r1 = Aufmass.pseudoInverse(1.0, 0.0, 1e-4)
+        nah(1.0, r1.first, 1e-12)
+        nah(0.0, r1.second, 1e-12)
+        nah(0.0, r1.third, 1e-12)      // nicht 1/λ_klein = 10⁴
+        val c = kotlin.math.cos(Math.PI / 6)
+        val s = kotlin.math.sin(Math.PI / 6)
+        val p = Aufmass.pseudoInverse(c * c, c * s, s * s)
+        nah(c * c, p.first, 1e-12)
+        nah(c * s, p.second, 1e-12)
+        nah(s * s, p.third, 1e-12)
+    }
+
+    @Test
     fun `ohne feste Waende wird ein L-Raum mit kleinsten Aenderungen geschlossen`() {
         val skizze = listOf(
             Aufmass.Wand(5.03, 90.0), Aufmass.Wand(4.02, 90.0), Aufmass.Wand(2.96, 90.0),

@@ -175,5 +175,19 @@ wahr("fast waagerecht → null", Z.bodenpunkt(Z.blickAusEuler(0, 88, 0), h) === 
 wahr("Unsicherheit wächst mit Entfernung",
   Z.unsicherheitBoden(Z.blickAusEuler(0, 30, 0), h) < Z.unsicherheitBoden(Z.blickAusEuler(0, 75, 0), h));
 
+// ------------------------------------- Wende-Kalibrierung mit Linsenversatz
+// Wandert die Linse beim Umdrehen um e (2e Höhenunterschied), verfälscht das δ
+// um ≈ e/D. Darum ein fernes Ziel (C6): 1 cm auf 2 m ist schon 0,3° (mehr als
+// die frühere Annahme ± 0,15°), auf 10 m bleibt selbst 5 cm unter 0,35°.
+const wende = (D, e, deltaGrad = 0.5, zLinse = 1.38, zZiel = 1.0) => {
+  const blick = (z, d) => { const th = Math.atan2(z - zZiel, D) + d * Z.GRAD; return [0, Math.cos(th), -Math.sin(th)]; };
+  return Z.neigungsfehlerGrad(blick(zLinse, deltaGrad), blick(zLinse - 2 * e, -deltaGrad)) - deltaGrad;
+};
+nah("Wende ohne Versatz exakt", wende(2, 0), 0, 1e-9);
+nah("Wende: 1 cm Versatz auf 2 m ≈ e/D = 0,29°", wende(2, 0.01), 0.01 / 2 / Z.GRAD, 0.01);
+wahr("Wende: 1 cm auf 2 m sprengt ± 0,15°", wende(2, 0.01) > 0.15);
+wahr("Wende: 1 cm auf 10 m < 0,06°", wende(10, 0.01) < 0.06);
+wahr("Wende: 5 cm auf 10 m < 0,35°", wende(10, 0.05) < 0.35);
+
 console.log(`zielen.test: ${ok} ok, ${fail} fail`);
 if (fail) process.exit(1);

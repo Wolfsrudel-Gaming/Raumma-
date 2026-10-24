@@ -54,15 +54,26 @@ a = r + L·sinθ'        z = h + L·cosθ'        θ' = θ − δ
 (Levenberg-Marquardt) – aus allem, was bekannt ist:
 
 - **Bandmaße** an Wänden (± 5 mm),
-- eine **bekannte Raumhöhe** (Laser nach oben, ± 1 cm),
-- eine **bekannte Tür-/Kantenhöhe** (Norm-Innentür lichte Höhe ≈ 1,97 m),
+- eine **bekannte Raumhöhe** (Laser nach oben, ± 1 cm) – sie setzt nur
+  zusammen mit der gezielten Raumkante (Schritt „Raumhöhe“) einen Maßstab;
+  ohne Kante sagt die App das und verweist auf den Schritt,
+- eine **bekannte Tür-/Fensterhöhe** (Norm-Innentür lichte Höhe ≈ 1,97 m) –
+  genau die Größe, die die App an der Öffnung als Höhe anzeigt: bei Türen und
+  Durchgängen die lichte Höhe ab Fertigfußboden (auch wenn auf den Rohboden
+  gezielt wurde), beim Fenster mit Brüstung Oberkante − Unterkante,
 - „der Raum ist **rechtwinklig**“ (weich, ± 1° je Ecke),
 - Vorwissen über die Haltung (Freihand: r = 0,30 ± 0,10 m; Stativ: r = 0).
 
 Die Gier-Drift ω kommt aus dem **Kontrollschuss**: nach den Ecken noch einmal
 auf Ecke 1 zielen. Der Neigungsfehler δ lässt sich **einmal je Gerät**
-kalibrieren: ein Ziel in ~2 m normal und mit dem Handy auf dem Kopf anzielen –
-der Fehler wechselt das Vorzeichen, das Ziel nicht: `δ = (θ₁ − θ₂)/2`.
+kalibrieren: ein Ziel normal und mit dem Handy auf dem Kopf anzielen – der
+Fehler wechselt das Vorzeichen, das Ziel nicht: `δ = (θ₁ − θ₂)/2`. Die Formel
+gilt nur, wenn die Linse beim Umdrehen an ihrem Platz bleibt; wandert sie um
+e, verfälscht das δ um ≈ e/D (Zielentfernung D): 1 cm auf 2 m sind schon
+0,3°. Deshalb ein **fernes Ziel** (≥ 10 m, durchs Fenster oder den Flur
+hinunter), die Handykante an einer festen Kante anlegen, zwei Wendepaare,
+die sich auf ~0,2° einig sein müssen; mehr als 1,5° wird abgelehnt. Im
+Ausgleich zählt ein kalibriertes δ mit ± 0,35° (unkalibriert ± 0,7°).
 
 Widersprechen sich mehrere Maße deutlich, meldet die App, welches vermutlich
 falsch abgelesen ist.
@@ -91,8 +102,8 @@ festliegt, ist so genau wie diese. Daraus folgt die **Qualitätsklasse**:
 
 | Klasse | Bedeutung | typisch erreicht mit |
 |---|---|---|
-| **AUFMASS** | jede Wand ± 5 cm oder besser | 1–2 Bandmaße, oder Stativ + kalibrierte Neigung |
-| **PLAN** | ± 15 cm | Türhöhe oder Raumhöhe als einziger Maßstab |
+| **AUFMASS** | jede Wand ± 5 cm oder besser | 1–2 Bandmaße |
+| **PLAN** | ± 15 cm | Türhöhe oder Raumhöhe (mit gezielter Kante) als einziger Maßstab, Stativ + kalibrierte Neigung |
 | **SKIZZE** | Form stimmt, Maßstab ± 5–8 % | kein bekanntes Maß |
 
 Monte-Carlo-Simulation (300 zufällige Standpunkte je Fall, Freihand mit
@@ -106,13 +117,16 @@ r = 20–45 cm, δ ≈ 0,5°, Zittern 0,2°, Drift 2°/min; `RMS / 95 %`):
 | 2 Bandmaße + Kontrollschuss | 0,3 / 0,6 cm | 2,2 / 4,8 cm |
 
 Die angezeigte 2σ-Unsicherheit deckte den tatsächlichen Fehler in 98–100 %
-der Fälle. Die App sagt außerdem, **welches Maß jetzt am meisten bringt**
+der Fälle (bei 2 Bandmaßen im Rechteck melden ~2 % der Fälle eine auffällige
+Schließkorrektur und fallen ehrlich auf SKIZZE, obwohl das Glätten recht
+hatte – das Bandmaß an der genannten Wand klärt es). Die App sagt außerdem,
+**welches Maß jetzt am meisten bringt**
 (ohne Bandmaß: die längste Wand). Schüsse flacher als 12° (Ecke > ~6 m weg)
 oder steiler als 75° (man steht fast auf der Ecke) werden abgelehnt.
 
 **Höhen** (Steckdosen, Schalter, Brüstungen) hängen an h und δ, die sich aus
-Längen allein nur schwach trennen lassen: ohne Kalibrierung ± 2–3 cm, mit
-kalibrierter Neigung ± 1 cm.
+Längen allein nur schwach trennen lassen: angezeigt werden ohne Kalibrierung
+± 3–4 cm, mit kalibrierter Neigung ± 2–3 cm (tatsächlich meist ± 1–2 cm).
 
 ### Rechtwinklig glätten und Ausgleich
 
@@ -127,8 +141,22 @@ möglich, nach kleinsten Quadraten (`Aufmass.ausgleichen`):
 ```
 
 Jedes Bandmaß bleibt dadurch **exakt** erhalten. Laufen alle freien Wände
-parallel, wird nur der schließbare Anteil verteilt; der Rest bleibt als
-ehrliche Restlücke sichtbar.
+(fast) parallel, wird nur der schließbare Anteil verteilt; der Rest bleibt
+als ehrliche Restlücke sichtbar. „Fast“ heißt: weniger als ≈ 11,5° zwischen
+den freien Richtungen (`det M < 0,01·spur² M`, Pseudo-Inverse über den
+Haupt-Eigenvektor). Sonst würde der Anteil quer zu ihnen mit 1/sin α in die
+Längen gedrückt – aus 3,00 m Seitenwand eines Trapezes wurden 2,40 m.
+
+Die Lücke vor dem Ausgleich wird gegen das Messrauschen geprüft
+(Mahalanobis-Abstand mit der Kovarianz der Längen). Ist sie mehr als das
+Dreifache dessen, was das Rauschen erklärt, stimmt das Modell nicht – meist
+eine Ecke, die gar nicht rechtwinklig ist. Dann geht die Schließkorrektur in
+die Unsicherheit der verschobenen Wände ein (die Klasse fällt), und die App
+nennt die Wand zum Nachmessen und die am stärksten geglättete Ecke mit dem
+Hinweis, „Rechtwinklig glätten“ auszuschalten. Eine 85°-Ecke wird so sicher
+erkannt, eine 87°-Ecke (≈ 20 cm Lücke auf 5 m) etwa in jedem zweiten Fall.
+Ohne Glätten trägt jede Wand zusätzlich das Richtungsrauschen ihrer Ecken
+(der Ausgleich hält die gezielten Winkel fest).
 
 ### Ablauf in der App
 

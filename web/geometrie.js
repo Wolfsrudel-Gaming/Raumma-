@@ -252,11 +252,17 @@ export function rechtwinklig(waende, toleranzGrad = 8) {
 }
 
 /**
+ * Rangschwelle des Ausgleichs, relativ: det(M)/spur(M)² ≈ λ_klein/λ_groß.
+ * Zwei freie Wände gelten darunter als parallel – ab ≈ 11,5° dazwischen nicht.
+ */
+export const RANG_RELATIV = 1e-2;
+
+/**
  * Schließt einen Zug, ohne die Wände in `fest` (Indizes) anzufassen – Spiegel
  * von `Aufmass.ausgleichen`. Richtungen bleiben; die freien Längen ändern sich
  * so wenig wie möglich (kleinste Quadrate), bis die Restlücke verschwindet.
- * Laufen alle freien Wände parallel, bleibt der nicht schließbare Teil als
- * ehrliche Restlücke stehen.
+ * Laufen alle freien Wände (fast) parallel, bleibt der nicht schließbare Teil
+ * als ehrliche Restlücke stehen.
  */
 export function ausgleichen(waende, fest = []) {
   const festSet = new Set(fest);
@@ -276,14 +282,7 @@ export function ausgleichen(waende, fest = []) {
     const c = Math.cos(richtungen[i]), s = Math.sin(richtungen[i]);
     m00 += c * c; m01 += c * s; m11 += s * s;
   });
-  const det = m00 * m11 - m01 * m01, spur = m00 + m11;
-  let p00 = 0, p01 = 0, p11 = 0;
-  if (det > 1e-9) { p00 = m11 / det; p01 = -m01 / det; p11 = m00 / det; }
-  else if (spur > 1e-9) {
-    const [ex, ey] = m00 >= m11 ? [m00, m01] : [m01, m11];
-    const n = Math.hypot(ex, ey), x = ex / n, y = ey / n;
-    p00 = x * x / spur; p01 = x * y / spur; p11 = y * y / spur;
-  }
+  const [p00, p01, p11] = pseudoInverse(m00, m01, m11);
   const lx = -(p00 * gx + p01 * gy), ly = -(p01 * gx + p11 * gy);
   const korrektur = waende.map((_, i) => festSet.has(i) ? 0 : Math.cos(richtungen[i]) * lx + Math.sin(richtungen[i]) * ly);
   const neu = laengen.map((l, i) => Math.max(0, l + korrektur[i]));
@@ -294,6 +293,25 @@ export function ausgleichen(waende, fest = []) {
     restlueckeVorher: Math.hypot(gx, gy),
     restlueckeNachher: Math.hypot(nx, ny)
   };
+}
+
+/**
+ * Pseudo-Inverse der symmetrischen 2×2-Matrix M = UUᵀ als [p00, p01, p11].
+ * Der Rang wird **relativ** entschieden: Laufen die freien Wände nur wenige
+ * Grad gegeneinander, ist M fast singulär, und die volle Inverse würde den
+ * Anteil der Lücke quer zu ihnen mit ~1/sin α in die Längen drücken (aus
+ * 3 m werden 2,40 m). Dann wird nur entlang des Haupt-Eigenvektors
+ * geschlossen – der Rest bleibt als Restlücke sichtbar.
+ */
+export function pseudoInverse(m00, m01, m11) {
+  const det = m00 * m11 - m01 * m01, spur = m00 + m11;
+  if (det > RANG_RELATIV * spur * spur) return [m11 / det, -m01 / det, m00 / det];
+  if (!(spur > 1e-9)) return [0, 0, 0];
+  // Rang 1: P = e·eᵀ/λ mit dem größten Eigenwert λ und seinem Eigenvektor e.
+  const lam = spur / 2 + Math.hypot((m00 - m11) / 2, m01);
+  const [ex, ey] = m00 >= m11 ? [lam - m11, m01] : [m01, lam - m00];
+  const n = Math.hypot(ex, ey), x = ex / n, y = ey / n;
+  return [x * x / lam, x * y / lam, y * y / lam];
 }
 
 /** Auf den Nullpunkt schieben und auf Zentimeter runden. */

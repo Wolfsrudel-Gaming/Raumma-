@@ -109,8 +109,9 @@ object Aufmass {
      *     Σ δᵢ·uᵢ = −Lücke,   Σ δᵢ² → min,   δᵢ = 0 für feste Wände
      *
      * mit uᵢ der Richtung von Wand i. Lösung: δ = Uᵀ(UUᵀ)⁻¹(−Lücke). Laufen alle
-     * freien Wände parallel, lässt sich nur der Anteil der Lücke in ihrer
-     * Richtung schließen – der Rest bleibt als ehrliche Restlücke stehen.
+     * freien Wände (fast) parallel, lässt sich nur der Anteil der Lücke in ihrer
+     * Richtung schließen – der Rest bleibt als ehrliche Restlücke stehen
+     * ([pseudoInverse]).
      *
      * Damit wird aus einer gezielten Skizze plus ein paar Bandmaßen ein
      * geschlossener Raum, in dem jedes gemessene Maß exakt stimmt.
@@ -136,20 +137,7 @@ object Aufmass {
             val s = sin(richtungen[i])
             m00 += c * c; m01 += c * s; m11 += s * s
         }
-        // Pseudo-Inverse der 2×2-Matrix M = UUᵀ.
-        val det = m00 * m11 - m01 * m01
-        val spur = m00 + m11
-        val (p00, p01, p11) = when {
-            det > 1e-9 -> Triple(m11 / det, -m01 / det, m00 / det)
-            spur > 1e-9 -> {
-                // Rang 1: alle freien Wände parallel. M = spur·e·eᵀ.
-                val (ex, ey) = if (m00 >= m11) m00 to m01 else m01 to m11
-                val n = hypot(ex, ey)
-                val (x, y) = (ex / n) to (ey / n)
-                Triple(x * x / spur, x * y / spur, y * y / spur)
-            }
-            else -> Triple(0.0, 0.0, 0.0)
-        }
+        val (p00, p01, p11) = pseudoInverse(m00, m01, m11)
         val lx = -(p00 * gx + p01 * gy)
         val ly = -(p01 * gx + p11 * gy)
         val korrektur = waende.indices.map { i ->
@@ -163,6 +151,34 @@ object Aufmass {
             hypot(gx, gy),
             hypot(nx, ny)
         )
+    }
+
+    /**
+     * Rangschwelle des Ausgleichs, relativ: det(M)/spur(M)² ≈ λ_klein/λ_groß.
+     * Zwei freie Wände gelten darunter als parallel – ab ≈ 11,5° dazwischen nicht.
+     */
+    const val RANG_RELATIV = 1e-2
+
+    /**
+     * Pseudo-Inverse der symmetrischen 2×2-Matrix M = UUᵀ als (p00, p01, p11).
+     *
+     * Der Rang wird **relativ** entschieden: Laufen die freien Wände nur wenige
+     * Grad gegeneinander, ist M fast singulär, und die volle Inverse würde den
+     * Anteil der Lücke quer zu ihnen mit ~1/sin α in die Längen drücken (aus
+     * 3 m werden 2,40 m). Dann wird nur entlang des Haupt-Eigenvektors
+     * geschlossen – der Rest bleibt als Restlücke sichtbar.
+     */
+    fun pseudoInverse(m00: Double, m01: Double, m11: Double): Triple<Double, Double, Double> {
+        val det = m00 * m11 - m01 * m01
+        val spur = m00 + m11
+        if (det > RANG_RELATIV * spur * spur) return Triple(m11 / det, -m01 / det, m00 / det)
+        if (!(spur > 1e-9)) return Triple(0.0, 0.0, 0.0)
+        // Rang 1: P = e·eᵀ/λ mit dem größten Eigenwert λ und seinem Eigenvektor e.
+        val lam = spur / 2 + hypot((m00 - m11) / 2, m01)
+        val (ex, ey) = if (m00 >= m11) (lam - m11) to m01 else m01 to (lam - m00)
+        val n = hypot(ex, ey)
+        val (x, y) = (ex / n) to (ey / n)
+        return Triple(x * x / lam, x * y / lam, y * y / lam)
     }
 
     /** Verschiebt einen Umriss auf den Nullpunkt und rundet auf Zentimeter. */

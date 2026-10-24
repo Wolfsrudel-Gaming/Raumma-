@@ -27,6 +27,9 @@
  *                                bietet der Abschluss „Bilder ins Projekt" an –
  *                                in der Android-App der Weg für die Bilder, denn
  *                                Downloads gibt es in der WebView nicht.
+ *                                Rückgabe: wahr = gespeichert; falsch (null) =
+ *                                Projekt nicht speicherbar, Foto wieder entfernt
+ *                                → die Übernahme bricht dort ab und meldet es.
  * Weitergabe: das Manifest über window.__native.teilen (App: Teilen-Menü,
  * Browser: Teilen bzw. Download), die Bilder im Browser als Download.
  *
@@ -94,6 +97,14 @@ export async function starteScan(opts) {
       <div class="scan-galerie"></div>
     </div>`;
   document.body.appendChild(overlay);
+
+  // Zurück-Taste (App): Das Overlay liegt über der Feld-App. Ohne eigenen Hörer
+  // schaltete die den Schirm darunter um, und das zweite Zurück beendete die
+  // App samt der Bilder, die nur hier im Speicher liegen. Also erst die Serie
+  // abschließen (Abschluss-Dialog), dann schließen. Solange die Kamera noch
+  // startet, wird Zurück nur abgefangen – wie „Fertig" ist es dann noch tot.
+  let beimZurueck = () => {};
+  const zurueckWeg = N && typeof N.beiZurueck === "function" ? N.beiZurueck(() => { beimZurueck(); return true; }) : null;
 
   const video = overlay.querySelector(".scan-video");
   const grab = overlay.querySelector(".scan-grab");
@@ -332,7 +343,12 @@ export async function starteScan(opts) {
     return p;
   }
 
-  /** Bilder verkleinert als Projektfotos übergeben; gibt die Zahl der übernommenen zurück. */
+  /**
+   * Bilder verkleinert als Projektfotos übergeben → { n, voll }: n übernommen.
+   * Eine falsche Rückgabe heißt, das Projekt ließ sich nicht mehr speichern
+   * (das Foto ist dann schon wieder heraus) – dort aufhören (`voll`), statt
+   * weitere Bilder als übernommen zu zählen, die beim Schließen fehlen.
+   */
   async function bilderInsProjekt() {
     let n = 0;
     for (let i = 0; i < bilder.length; i++) {
@@ -343,9 +359,10 @@ export async function starteScan(opts) {
       const grad = b.pose.azimut == null ? "" : ` · ${Math.round(b.pose.azimut)}°`;
       let r;
       try { r = await opts.fotoHinzufuegen(url, `Bildserie · Bild ${i + 1}${grad}`); } catch (_) { r = null; }
-      if (r !== null && r !== false) n++;
+      if (!r) return { n, voll: true };
+      n++;
     }
-    return n;
+    return { n, voll: false };
   }
 
   let beendet = false;
@@ -396,9 +413,14 @@ export async function starteScan(opts) {
     if (knopf(".scan-insprojekt")) knopf(".scan-insprojekt").onclick = async e => {
       const b = e.currentTarget;
       b.disabled = true; b.textContent = "Übernehme …";
-      const n = await bilderInsProjekt();
+      const { n, voll } = await bilderInsProjekt();
+      if (voll) {
+        b.textContent = `${n} von ${mitBild} übernommen`;
+        melde(`${n} von ${mitBild} übernommen – Gerätespeicher voll, Projekt exportieren.`);
+        return;
+      }
       b.textContent = n ? `✓ ${n === 1 ? "1 Foto" : `${n} Fotos`} im Projekt` : "Keine Bilder übernommen";
-      melde(n ? "" : "Die Bilder ließen sich nicht übernehmen (Gerätespeicher voll?).");
+      melde(n ? "" : "Die Bilder ließen sich nicht übernehmen.");
     };
     if (knopf(".scan-teilen")) knopf(".scan-teilen").onclick = () =>
       manifestTeilen(m).then(ok => melde(ok ? "Manifest weitergegeben." : "Teilen nicht möglich."));
@@ -410,11 +432,13 @@ export async function starteScan(opts) {
     knopf(".scan-fertig").onclick = schliessen;
   };
   function schliessen() {
+    if (zurueckWeg) zurueckWeg();
     if (!overlay.isConnected) return;
     overlay.remove();
     if (opts && opts.onEnde) opts.onEnde();
   }
   overlay.querySelector(".scan-zu").onclick = beenden;
+  beimZurueck = () => { if (!beendet) beenden(); else schliessen(); };
 
   return { beenden };
 }

@@ -51,6 +51,25 @@ nah("parallel Wand 1 → 5,95", a.waende[0].laenge, 5.95, 1e-9);
 nah("parallel Wand 3 → 5,95", a.waende[2].laenge, 5.95, 1e-9);
 nah("parallel Restlücke 0,05", a.restlueckeNachher, 0.05, 1e-9);
 
+// Fast parallele freie Wände (Trapez, Schräge 1,9°): der Anteil quer zu ihnen
+// bleibt Restlücke, statt mit 1/sin α in die Längen zu fahren (früher 3,00 → 2,40).
+a = G.ausgleichen([W(4.02, 90), W(3.0, 90), W(4.10, 91.91), W(3.0017, 88.09)], [0, 2]);
+nah("fast parallel Wand 2 bleibt 3,00", a.waende[1].laenge, 3.0, 0.002);
+nah("fast parallel Wand 4 bleibt 3,00", a.waende[3].laenge, 3.0017, 0.002);
+nah("fast parallel Restlücke 0,02", a.restlueckeNachher, 0.02, 0.001);
+// Deutlich schiefe Wand (20°) schließt weiterhin voll.
+a = G.ausgleichen([W(4.02, 90), W(3.0, 90), W(5.0919, 110), W(3.1925, 70)], [0, 2]);
+nah("20° schief schließt", a.restlueckeNachher, 0, 1e-9);
+nah("20° schief Korrektur 2 −0,055", a.korrektur[1], -0.055, 0.001);
+nah("20° schief Korrektur 4 −0,0585", a.korrektur[3], -0.0585, 0.001);
+// Pseudo-Inverse: fast singulär → nur der Haupt-Eigenvektor, nicht 1/λ_klein.
+gleich("fast singulär → Rang 1", G.pseudoInverse(1, 0, 1e-4), [1, 0, 0]);
+const c30 = Math.cos(Math.PI / 6), s30 = Math.sin(Math.PI / 6);
+const p30 = G.pseudoInverse(c30 * c30, c30 * s30, s30 * s30);
+nah("eine Wand 30°: P = u·uᵀ (xx)", p30[0], c30 * c30, 1e-12);
+nah("eine Wand 30°: P = u·uᵀ (xy)", p30[1], c30 * s30, 1e-12);
+nah("eine Wand 30°: P = u·uᵀ (yy)", p30[2], s30 * s30, 1e-12);
+
 // L-Raum ohne feste Wände
 a = G.ausgleichen([W(5.03, 90), W(4.02, 90), W(2.96, 90), W(2.48, -90), W(2.01, 90), W(1.53, 90)]);
 nah("L-Raum geschlossen", a.restlueckeNachher, 0, 1e-9);

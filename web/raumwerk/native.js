@@ -18,7 +18,7 @@
     app: !!A,                    // läuft in der nativen App?
     wertOrient: null,            // { azimut (Kamerarichtung), neigung, roll, kameraNeigung, q:[w,x,y,z] }
     wertOrt: null,               // { breite, laenge, hoehe, genauigkeit, quelle, zeit }
-    wertLage: null,              // { qs:[w,x,y,z] } (App) oder { euler:[α,β,γ] } (Web)
+    wertLage: null,              // { qs:[w,x,y,z], epoche } (App) oder { euler:[α,β,γ] } (Web)
     _info: null,
     _orientHörer: [],
     _ortHörer: [],
@@ -47,6 +47,12 @@
      * Spiel-Rotationsvektor (Gyroskop + Beschleunigung) als Quaternion `qs`,
      * im Browser `deviceorientation` (in Chrome relativ, also ebenfalls ohne
      * Kompass) als `euler`. Gibt eine Abmeldefunktion zurück.
+     *
+     * `epoche` (nur App, unverändert aus NativeBridge.kt durchgereicht): zählt
+     * hoch, sobald der Sensor neu angemeldet wurde (z. B. nach Pause/Rückkehr).
+     * Dann zählt die Gier ab einer neuen Null – Richtungen verschiedener
+     * Epochen gehören nicht in eine Rechnung. Im Browser fehlt sie (undefined)
+     * und wechselt also nie.
      */
     beiLage: function (cb) {
       var self = this;

@@ -97,12 +97,15 @@ try {
   // fragt, ob der Rohboden im Bild ist (vorausgewählt) – dann zählen alle
   // gezielten Höhen ab Rohboden und werden auf den Fertigfußboden umgerechnet.
   const estrich = await p.isChecked("#asRoh").catch(() => false);
-  // Einmal je Gerät: Neigung kalibrieren – ein Ziel normal und mit dem Handy auf
-  // dem Kopf anzielen; der Neigungsfehler wechselt dabei das Vorzeichen.
+  // Einmal je Gerät: Neigung kalibrieren – ein fernes Ziel (Flur, Fenster) normal
+  // und mit dem Handy auf dem Kopf anzielen; der Neigungsfehler wechselt dabei
+  // das Vorzeichen. Ein zweites Paar bestätigt das erste.
   await p.click("#asKalib");
-  const marke = [3.5, 4, 0.9];
-  await ziele(marke, true, HAND.biasGrad);
-  await ziele(marke, true, -HAND.biasGrad);
+  const marke = [3.5, 15, 1.4];
+  for (let paar = 0; paar < 2; paar++) {
+    await ziele(marke, true, HAND.biasGrad);
+    await ziele(marke, true, -HAND.biasGrad);
+  }
   const geraet = await p.evaluate(() => JSON.parse(localStorage.getItem("raumwerk.geraet")));
   nah("Neigungsfehler kalibriert 0,4°", geraet && geraet.neigungsfehlerGrad, HAND.biasGrad, 0.02);
   for (const ecke of L) await ziele(ecke);

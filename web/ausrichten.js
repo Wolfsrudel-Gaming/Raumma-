@@ -293,6 +293,24 @@ export function kameraQuaternion(drehungRad, qGeraet, schirmRad = 0) {
   return qMal(qMal(qWelt, qGeraet), qAchse([0, 0, 1], -schirmRad));
 }
 
+/**
+ * Kamera-Quaternion [w, x, y, z] (aus `kameraQuaternion`) auf kürzestem Weg
+ * so nachdrehen, dass ihre Blickachse (−z) entlang `d` zeigt – dem Zielstrahl
+ * aus `kameraImRaum` in Raumachsen [x, y, Höhe], also um den Neigungsfehler
+ * bereinigt. Das Rollen bleibt. So zeigen Bild, Zielvorschau und Antippen
+ * denselben Strahl, mit dem „Setzen" den Einbau platziert.
+ */
+export function kameraAufStrahl(q, d) {
+  const l = Math.hypot(d[0], d[1], d[2]);
+  if (!(l > 0)) return q;
+  const f = dreheVektor(q, [0, 0, -1]);
+  const z = [d[0] / l, d[2] / l, d[1] / l];            // three.js: y = Höhe, z = Raum-y
+  const c = f[0] * z[0] + f[1] * z[1] + f[2] * z[2];
+  if (c < -0.999999) return q;                         // Gegenrichtung: keine kürzeste Drehung
+  const a = [f[1] * z[2] - f[2] * z[1], f[2] * z[0] - f[0] * z[2], f[0] * z[1] - f[1] * z[0]];
+  return qNorm(qMal(qNorm([1 + c, a[0], a[1], a[2]]), q));
+}
+
 /** Vektor mit Quaternion [w, x, y, z] drehen. */
 export function dreheVektor(q, v) {
   const [w, x, y, z] = q;

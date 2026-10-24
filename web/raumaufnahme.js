@@ -37,11 +37,13 @@
  *     ecken: [{ v:[x,y,z], ebene:"boden"|"decke", t }],   // in Tipp-Reihenfolge
  *     schluss: { v, t } | null,       // Schlussschuss auf Ecke 1 (Gier-Drift)
  *     hoehe: { vUnten, vOben, tUnten, tOben } | null,     // senkrechte Raumkante
- *     raumhoeheM: null | Zahl,        // bekannt (Laser) – setzt dann den Maßstab
+ *     raumhoeheM: null | Zahl,        // bekannt (Laser) – Maßstab nur zusammen mit `hoehe`
  *     senkrechte: [{ vUnten, vOben, tUnten, tOben, hoeheM }],  // z. B. Türzarge 1,97
  *     bandmasse: { "<Raum-Wandindex>": Meter },
  *     rechtwinklig: true,
  *     oeffnungen: [{ id, art, a: v (unten links), b: v (oben rechts), ta, tb, hoeheBekanntM? }],
+ *                                      // hoeheBekanntM = angezeigte Höhe: lichte Höhe ab FFB,
+ *                                      // beim Fenster mit Brüstung Oberkante − Unterkante
  *     einbauten:  [{ id, art, v, t, befestigung }]
  *   }
  *
@@ -60,8 +62,14 @@ const SIGMA_RECHT_GRAD = 1.0;
 /** Bekannte Raumhöhe (Laser) bzw. bekannte Öffnungs-/Kantenhöhe (1σ, Meter). */
 const SIGMA_RAUMHOEHE_M = 0.01;
 const SIGMA_KANTE_M = 0.015;
-/** Neigungsfehler: kalibriert / unkalibriert (1σ, Grad). */
-const SIGMA_DELTA_KAL = 0.15, SIGMA_DELTA_ROH = 0.7;
+/**
+ * Neigungsfehler: kalibriert / unkalibriert (1σ, Grad). Die Wende-Kalibrierung
+ * ist so gut wie die Linse beim Umdrehen stillhält: Versatz e auf ein Ziel in
+ * D Metern verfälscht δ um ≈ e/D (1 cm auf 2 m ≈ 0,3°) – also ehrlich 0,35°.
+ */
+const SIGMA_DELTA_KAL = 0.35, SIGMA_DELTA_ROH = 0.7;
+/** Unmodellierter Rest der Lücke vor dem Ausgleich (1σ, Meter, je Achse). */
+const SIGMA_LUECKE_M = 0.01;
 /** Lichte Höhe einer Norm-Innentür (DIN 18101, Zarge) – Vorschlag, wenn man sie anzielt. */
 export const TUER_LICHT_M = 1.97;
 
@@ -190,9 +198,11 @@ function residuen(a, x, start, plan) {
     const Hs = Z.kantenhoeheM(s.vUnten, s.vOben, p, s.tUnten, s.tOben);
     res.push(Number.isFinite(Hs) ? (Hs - Number(s.hoeheM)) / SIGMA_KANTE_M : 1e3);
   }
-  for (const o of plan.oeffnungen) {
+  // Bekannte Öffnungshöhe = die angezeigte Größe: ab FFB, beim Fenster mit
+  // Brüstung von Unter- bis Oberkante (wie in Schritt 4 von `rekonstruiere`).
+  for (const { o, bruestung } of plan.oeffnungen) {
     const r = oeffnungRoh(o, p, geo);
-    res.push(r ? (r.oben - Number(o.hoeheBekanntM)) / SIGMA_KANTE_M : 1e3);
+    res.push(r ? (r.oben - (bruestung ? r.unten : plan.abzug) - Number(o.hoeheBekanntM)) / SIGMA_KANTE_M : 1e3);
   }
   res.push((x[0] - start.p.h) / start.sig.h, (x[1] - start.p.r) / start.sig.r, (x[2] - start.p.delta) / start.sig.delta);
   return res;
@@ -296,13 +306,20 @@ export function rekonstruiere(a, optionen = {}) {
   const band = Object.entries(a.bandmasse || {})
     .map(([i, m]) => [Number(i), Number(m)])
     .filter(([i, m]) => Number.isInteger(i) && i >= 0 && i < n && m > 0);
+  // Fenster mit Brüstung oder nicht: einmal bei den Startwerten entschieden,
+  // damit Zahl und Form der Residuen beim Ausgleich gleich bleiben.
+  const mitBruestung = new Map((a.oeffnungen || []).map(o => {
+    const r = o.a ? oeffnungRoh(o, start.p, geo) : null;
+    return [o, !!r && hatBruestung(o, r.unten - abzug)];
+  }));
   const plan = {
-    n, band,
+    n, band, abzug,
     recht: a.rechtwinklig ? geo.roh.map((w, i) => [i, Math.round(w.drehung / 90) * 90])
       .filter(([i, ziel]) => Math.abs(geo.roh[i].drehung - ziel) < 12) : [],
     raumhoehe: a.hoehe && Number(a.raumhoeheM) > 0 ? Number(a.raumhoeheM) : null,
     senkrechte: (a.senkrechte || []).filter(s => s && s.vUnten && s.vOben && Number(s.hoeheM) > 0),
     oeffnungen: (a.oeffnungen || []).filter(o => Number(o.hoeheBekanntM) > 0 && o.a && o.b)
+      .map(o => ({ o, bruestung: mitBruestung.get(o) }))
   };
   const referenzen = band.length + (plan.raumhoehe ? 1 : 0) + plan.senkrechte.length + plan.oeffnungen.length;
 
@@ -318,8 +335,11 @@ export function rekonstruiere(a, optionen = {}) {
   const skala = kamerahoeheM / (Number(a.kamerahoeheM) || kamerahoeheM);
   if (referenzen && Math.abs(skala - 1) > 0.04)
     hinweise.push(`Kamerahöhe auf ${fmt(kamerahoeheM)} ausgeglichen (geschätzt ${fmt(a.kamerahoeheM)}).`);
-  if (!referenzen)
+  // Die Laser-Raumhöhe setzt nur über die gezielte Raumkante einen Maßstab.
+  if (!referenzen && a.hoehe)
     hinweise.push(`Noch kein Maßstab: eine Wand mit dem Bandmaß, die Raumhöhe (Laser) oder eine Türhöhe (Norm-Innentür lichte Höhe ≈ ${fmt(TUER_LICHT_M)}) eintragen – dann stimmt jedes Maß.`);
+  else if (!referenzen)
+    hinweise.push(`Noch kein Maßstab: eine Wand mit dem Bandmaß oder eine Türhöhe (Norm-Innentür lichte Höhe ≈ ${fmt(TUER_LICHT_M)}) eintragen – dann stimmt jedes Maß. ${KANTE_FEHLT}`);
   const driftGrad = Math.abs(p.omega) * (zeitSpanne(a)) / Z.GRAD;
   if (a.schluss && driftGrad > 3) hinweise.push(`Die Richtung ist während der Aufnahme um ${komma(driftGrad, 1)}° weggelaufen – herausgerechnet.`);
   if (!a.schluss && (a.ecken || []).length >= 4) hinweise.push("Tipp: Ein Schlussschuss auf Ecke 1 rechnet das Weglaufen der Richtung heraus.");
@@ -347,11 +367,23 @@ export function rekonstruiere(a, optionen = {}) {
   if (a.rechtwinklig) waende = G.rechtwinklig(waende, 8);
   for (const [i, m] of band) waende[i].laenge = m;
   const fest = band.map(([i]) => i);
+  // Erklärt das Messrauschen die Lücke nicht, stimmt das Modell nicht (meist
+  // eine Ecke, die gar nicht rechtwinklig ist) – dann ist die Schließkorrektur
+  // selbst die ehrliche Unsicherheit der verschobenen Wände.
+  const lueckeSigma = lueckeInSigma(waende, fest, C, rausch);
+  const auffaellig = lueckeSigma > 3;
+  const sigmaRichtung = richtungsSigma(geo, waende, fest);
   const aus = G.ausgleichen(waende, fest);
   const korrektur = aus.korrektur;
   waende = aus.waende;
   const punkte = zugPunkte(waende);
-  if (aus.restlueckeVorher > 0.03)
+  if (auffaellig && aus.restlueckeVorher > 0.03) {
+    // Welche Seite stimmt, sagt erst ein Bandmaß an der am weitesten verschobenen Wand.
+    const k = korrektur.reduce((b, v, i) => (Math.abs(v) > Math.abs(korrektur[b]) ? i : b), 0);
+    hinweise.push(`Restlücke vor dem Ausgleich ${Math.round(aus.restlueckeVorher * 100)} cm – mehr, als die Messung erklärt: `
+      + `Wand ${k + 1} musste um ${Math.round(Math.abs(korrektur[k]) * 100)} cm verschoben werden. Wand ${k + 1} mit dem Bandmaß nachmessen`
+      + (a.rechtwinklig ? `; ist eine Ecke nicht rechtwinklig${schiefsteEcke(geo.roh, waende)}, „Rechtwinklig glätten“ ausschalten.` : " und die Bandmaße prüfen."));
+  } else if (aus.restlueckeVorher > 0.03)
     hinweise.push(`Restlücke vor dem Ausgleich ${Math.round(aus.restlueckeVorher * 100)} cm – auf die nicht gemessenen Wände verteilt.`);
   if (aus.restlueckeNachher > 0.02)
     hinweise.push(`Restlücke ${Math.round(aus.restlueckeNachher * 100)} cm bleibt – die Bandmaße passen nicht zusammen.`);
@@ -366,7 +398,7 @@ export function rekonstruiere(a, optionen = {}) {
     return {
       laenge: w.laenge, drehung: w.drehung,
       quelle: istBand ? "band" : "gezielt",
-      sigmaM: istBand ? SIGMA_BAND_M : Math.max(sigmaNach[i], SIGMA_BAND_M),
+      sigmaM: istBand ? SIGMA_BAND_M : Math.max(Math.hypot(sigmaNach[i], sigmaRichtung[i], auffaellig ? korrektur[i] : 0), SIGMA_BAND_M),
       korrekturM: korrektur[i]
     };
   });
@@ -374,8 +406,11 @@ export function rekonstruiere(a, optionen = {}) {
   // Höhen (Steckdosen, Brüstungen, Raumhöhe) hängen direkt an der Linsenhöhe –
   // deren Restunsicherheit ist die ehrliche Höhenangabe.
   const sigmaHoeheM = lsg.Q ? Math.sqrt(Math.max(0, lsg.Q[0][0]) + (0.005) ** 2) : start.sig.h;
-  if (sigmaHoeheM > 0.02)
-    hinweise.push(`Höhen ± ${Math.round(sigmaHoeheM * 100)} cm – für genaue Höhen die Neigung einmal kalibrieren oder die Raumhöhe (Laser) eintragen.`);
+  if (sigmaHoeheM > 0.02) {
+    const wege = [zahlOderNull(a.neigungsfehlerGrad) == null ? "die Neigung einmal kalibrieren" : null,
+      a.hoehe ? "die Raumhöhe (Laser) eintragen" : "eine Raumkante anzielen und die Raumhöhe (Laser) eintragen"];
+    hinweise.push(`Höhen ± ${Math.round(sigmaHoeheM * 100)} cm – für genaue Höhen ${wege.filter(Boolean).join(" oder ")}.`);
+  }
   const klasse = maxSigma <= 0.05 ? "AUFMASS" : maxSigma <= 0.15 ? "PLAN" : "SKIZZE";
   const offen = wl.map((w, i) => [i, w]).filter(([, w]) => w.quelle !== "band");
   let naechstesMass = null;
@@ -399,7 +434,10 @@ export function rekonstruiere(a, optionen = {}) {
     const lang = laengen[r.index];
     const x0 = klemm(r.anteil0 * lang, 0, lang), x1 = klemm(r.anteil1 * lang, 0, lang);
     let unten = r.unten - abzug, oben = r.oben - abzug;
-    if (o.art !== "FENSTER" || unten < 0.05) unten = 0;     // Türen stehen auf dem Boden
+    // Türen stehen auf dem Boden. Bei bekannter Höhe gilt die Entscheidung des
+    // Ausgleichs, damit angezeigte und eingetragene Höhe dieselbe Größe sind.
+    const bekannt = plan.oeffnungen.some(q => q.o === o);
+    if (!(bekannt ? mitBruestung.get(o) : hatBruestung(o, unten))) unten = 0;
     if (hoeheM) oben = Math.min(oben, hoeheM);
     const breite = x1 - x0;
     if (breite < 0.2) hinweise.push(`${artName(o.art)}: nur ${Math.round(breite * 100)} cm breit – beide Ecken getroffen?`);
@@ -457,22 +495,14 @@ export function rekonstruiere(a, optionen = {}) {
  */
 function kovarianzNachAusgleich(waende, fest, C, restluecke) {
   const n = waende.length;
-  const richt = [];
-  let r = 0;
-  for (const w of waende) { richt.push([Math.cos(r * Z.GRAD), Math.sin(r * Z.GRAD)]); r += Number(w.drehung) || 0; }
+  const richt = richtungen(waende);
   const festSet = new Set(fest);
   const F = [...Array(n).keys()].filter(i => !festSet.has(i));
   const B = [...festSet];
   let m00 = 0, m01 = 0, m11 = 0;
   for (const i of F) { const [c, s] = richt[i]; m00 += c * c; m01 += c * s; m11 += s * s; }
-  const det = m00 * m11 - m01 * m01, spur = m00 + m11;
-  let P = [[0, 0], [0, 0]];
-  if (det > 1e-9) P = [[m11 / det, -m01 / det], [-m01 / det, m00 / det]];
-  else if (spur > 1e-9) {
-    const [ex, ey] = m00 >= m11 ? [m00, m01] : [m01, m11];
-    const l = Math.hypot(ex, ey), x = ex / l, y = ey / l;
-    P = [[x * x / spur, x * y / spur], [x * y / spur, y * y / spur]];
-  }
+  const [p00, p01, p11] = G.pseudoInverse(m00, m01, m11);   // derselbe Rang wie im Ausgleich
+  const P = [[p00, p01], [p01, p11]];
   const kopplung = (i, j) => {   // u_iᵀ P u_j
     const [a0, a1] = richt[i], [b0, b1] = richt[j];
     return a0 * (P[0][0] * b0 + P[0][1] * b1) + a1 * (P[1][0] * b0 + P[1][1] * b1);
@@ -487,6 +517,69 @@ function kovarianzNachAusgleich(waende, fest, C, restluecke) {
     sig[i] = Math.sqrt(Math.max(0, v) + restluecke ** 2);
   }
   return sig;
+}
+
+/** Einheitsvektor jeder Wand im Zug (Start nach rechts, Drehungen aufsummiert). */
+function richtungen(waende) {
+  const richt = [];
+  let r = 0;
+  for (const w of waende) { richt.push([Math.cos(r * Z.GRAD), Math.sin(r * Z.GRAD)]); r += Number(w.drehung) || 0; }
+  return richt;
+}
+
+/**
+ * Lücke vor dem Ausgleich in Vielfachen ihrer erwarteten Streuung (Mahalanobis).
+ * Bei festen Richtungen entsteht sie nur aus Längenfehlern:
+ * g = Σ e_i·u_i, also C_g = Σ_frei u_i C_ij u_jᵀ + Σ_fest (σ²_Band + ρ_j²) u_j u_jᵀ
+ * (+ σ₀² je Achse für Ungenanntes). ρ_j: Das Zielrauschen einer Bandmaß-Wand
+ * steckt über den Ausgleich von (h, r, δ) in den freien Wänden, ohne dass Q es
+ * zeigt. Über 3 erklärt das Rauschen die Lücke nicht mehr.
+ */
+function lueckeInSigma(waende, fest, C, rausch) {
+  const u = richtungen(waende), festSet = new Set(fest);
+  let gx = 0, gy = 0;
+  waende.forEach((w, i) => { gx += w.laenge * u[i][0]; gy += w.laenge * u[i][1]; });
+  let c00 = SIGMA_LUECKE_M ** 2, c01 = 0, c11 = SIGMA_LUECKE_M ** 2;
+  for (let i = 0; i < waende.length; i++) for (let j = 0; j < waende.length; j++) {
+    const v = festSet.has(i) || festSet.has(j) ? (i === j ? SIGMA_BAND_M ** 2 + rausch[i] ** 2 : 0) : C[i][j];
+    c00 += u[i][0] * v * u[j][0]; c01 += u[i][0] * v * u[j][1]; c11 += u[i][1] * v * u[j][1];
+  }
+  const det = c00 * c11 - c01 * c01;
+  return Math.sqrt(Math.max(0, (c11 * gx * gx - 2 * c01 * gx * gy + c00 * gy * gy) / det));
+}
+
+/** „ (Wand 4/1 gezielt 85,9°)“ – die am stärksten geglättete Ecke, ab 1° Abweichung. */
+function schiefsteEcke(roh, glatt) {
+  let beste = -1, abw = 0;
+  roh.forEach((w, i) => { const d = Math.abs(w.drehung - glatt[i].drehung); if (d > abw) { abw = d; beste = i; } });
+  if (beste < 0 || abw < 1) return "";
+  return ` (Wand ${beste + 1}/${(beste + 1) % roh.length + 1} gezielt ${komma(180 - Math.abs(roh[beste].drehung), 1)}°)`;
+}
+
+/**
+ * Richtungsrauschen (1σ je Wand, m) der Ecken, die **nicht** geglättet wurden
+ * (ohne „rechtwinklig“ oder an deutlich schiefen Ecken): Der Ausgleich hält die
+ * Richtungen fest, also trägt er deren Zittern in die freien Wände – 1° auf
+ * 4 m sind 7 cm, die `kovarianzNachAusgleich` (nur Längen) nicht sieht. Jede
+ * Ecke wird um ihr Rauschen verschoben (x, dann y), die Winkel neu bestimmt
+ * und der Ausgleich wiederholt.
+ */
+function richtungsSigma(geo, vorher, fest) {
+  const n = vorher.length;
+  const ungeglaettet = vorher.map((w, i) => w.drehung === geo.roh[i].drehung);
+  if (!ungeglaettet.some(Boolean)) return Array(n).fill(0);
+  const basis = G.ausgleichen(vorher, fest).waende.map(w => w.laenge);
+  const varianz = Array(n).fill(0);
+  geo.raum.punkte.forEach((_, c) => {
+    const s = geo.sigma[c] / Math.SQRT2;   // σ je Achse
+    if (!Number.isFinite(s)) return;
+    for (const [dx, dy] of [[s, 0], [0, s]]) {
+      const roh = waendeRoh(geo.raum.punkte.map((q, k) => (k === c ? [q[0] + dx, q[1] + dy] : q)));
+      const w = vorher.map((v, i) => (ungeglaettet[i] ? { ...v, drehung: roh[i].drehung } : v));
+      G.ausgleichen(w, fest).waende.forEach((x, i) => { varianz[i] += (x.laenge - basis[i]) ** 2; });
+    }
+  });
+  return varianz.map(Math.sqrt);
 }
 
 /** ∂(Länge der Wand i)/∂[h, r, δ] – für die Fehlerfortpflanzung. */
@@ -581,9 +674,12 @@ export function wandNachTipp(a, raumIndex) {
 
 // ---------------------------------------------------------------- Helfer
 
+const KANTE_FEHLT = "Eine Laser-Raumhöhe wirkt als Maßstab erst mit einer gezielten Raumkante (Schritt „Raumhöhe“).";
 const runde = (v, n = 2) => Math.round(v * 10 ** n) / 10 ** n;
 const klemm = (v, a, b) => Math.max(a, Math.min(b, v));
 const klemm01 = v => Math.max(0, Math.min(1, Math.round(v * 1000) / 1000));
 const komma = (v, n) => Number(v).toFixed(n).replace(".", ",");
 const fmt = m => `${komma(m, 2)} m`;
+/** Hat die Öffnung eine Brüstung? Nur Fenster, ab 5 cm über dem FFB. */
+const hatBruestung = (o, untenAbFFB) => o.art === "FENSTER" && untenAbFFB >= 0.05;
 const artName = a => ({ TUER: "Tür", DURCHGANG: "Durchgang", FENSTER: "Fenster", TOR: "Tor" }[a] || a || "Öffnung");

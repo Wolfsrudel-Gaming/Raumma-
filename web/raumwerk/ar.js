@@ -17,6 +17,8 @@
  *     beides über window.__native.beiLage – dieselbe Lage, mit der auch
  *     zielen.js rechnet). Das Fadenkreuz setzt Einbauten: Der Zielstrahl
  *     trifft die Wand (Wand, Abstand, Höhe), die Decke oder den Boden.
+ *     Meldet die Lage eine neue `epoche` (App: Sensor nach Pause neu
+ *     angemeldet, die Gier zählt ab einer neuen Null), heißt es neu ausrichten.
  *  Ohne Lagesensor: Ansicht von Hand (ziehen = drehen, zwei Finger = schieben).
  *  WebXR-Welttracking bleibt als Aufwertung, wo das Gerät es kann.
  *
@@ -308,6 +310,9 @@ export async function starte(opts) {
     m.box.position.set(p.x, p.h, p.z);
     m.box.rotation.set(0, -(p.winkel || 0) * Math.PI / 180, 0);   // flach an der Wand
     m.stem.geometry.setFromPoints([new THREE.Vector3(p.x, aufbau(), p.z), new THREE.Vector3(p.x, p.h, p.z)]);
+    // setFromPoints lässt die Hüllkugel stehen – sonst schneidet der
+    // Sichtkegel den Steg am alten Ort weg.
+    m.stem.geometry.computeBoundingSphere();
     const farbe = auswahl?.typ === "einbau" && auswahl.id === e.id ? FARBE.wahl : FARBE.einbau;
     m.box.material.color.setHex(farbe);
     m.stem.material.color.setHex(farbe);
@@ -474,6 +479,10 @@ export async function starte(opts) {
     const v = Au.blickAusLage(o);
     const q = Au.geraetQuaternion(o);
     if (!v || !q || !v.every(Number.isFinite) || !q.every(Number.isFinite)) return;
+    // Neue Lage-Epoche (App: Sensor nach Pause/Rückkehr neu angemeldet): Der
+    // Spiel-Rotationsvektor zählt die Gier dann ab einer neuen Null – alte
+    // Blickrichtungen und die Ausrichtung passen nicht mehr dazu.
+    if (st.lage && o.epoche !== st.lage.epoche) lageNeuGestartet();
     st.lage = o; st.qGeraet = q;
     const t = performance.now();
     st.puffer.push({ t, v });
@@ -483,6 +492,17 @@ export async function starte(opts) {
       // Kam der Sensor erst nach dem Rückfall auf „von Hand", zurück zum Ausrichten.
       if (st.modus === "hand" && st.handAuto && !st.handBenutzt) { st.modus = "ausrichten"; st.meldung = ""; oberflaeche(); }
     }
+  }
+
+  /** Lage neu gestartet: gepufferte Richtungen, Ecke 1 und Ausrichtung verwerfen. */
+  function lageNeuGestartet() {
+    st.puffer = [];
+    if (st.modus === "ausgerichtet" || st.ecke1) neuAusrichten("Lage neu gestartet – bitte neu ausrichten.");
+  }
+
+  function neuAusrichten(meldung = "") {
+    st.modus = "ausrichten"; st.ecke1 = st.ecke2 = null; st.pose = null; st.hoeheVonHand = false;
+    st.meldung = meldung; armiert = null; paletteMalen(); waehle(null); oberflaeche();
   }
 
   /** Gemittelte Blickrichtung kurz VOR dem Auslösen – der Druck selbst wackelt. */
@@ -708,10 +728,7 @@ export async function starte(opts) {
   $(".ar-ausloeser").onclick = ausloesen;
   $(".ar-rueck").onclick = () => { st.ecke1 = null; st.meldung = ""; oberflaeche(); };
   $(".ar-ohne").onclick = () => handStarten(false);
-  $(".ar-neu").onclick = () => {
-    st.modus = "ausrichten"; st.ecke1 = st.ecke2 = null; st.pose = null; st.hoeheVonHand = false;
-    st.meldung = ""; armiert = null; paletteMalen(); waehle(null); oberflaeche();
-  };
+  $(".ar-neu").onclick = () => neuAusrichten();
   $(".ar-setzen").onclick = () => setzeMitStrahl(fadenkreuzStrahl());
 
   $(".ar-kam").oninput = e => {
@@ -885,7 +902,10 @@ export async function starte(opts) {
       const v = Au.blickAusLage(st.lage);
       const k = v ? Au.kameraImRaum(p, v) : { o: [p.verschiebung[0], p.verschiebung[1], kamerahoeheJetzt()] };
       camera.position.set(k.o[0], bodenZ() + k.o[2], k.o[1]);
-      const q = Au.kameraQuaternion(p.drehungRad, st.qGeraet, schirmWinkel());
+      // Blickachse = bereinigter Zielstrahl (Neigungsfehler) wie beim Setzen –
+      // sonst zeigten Bild, Zielvorschau und Antippen eine andere Höhe.
+      const q0 = Au.kameraQuaternion(p.drehungRad, st.qGeraet, schirmWinkel());
+      const q = k.d ? Au.kameraAufStrahl(q0, k.d) : q0;
       camera.quaternion.set(q[1], q[2], q[3], q[0]);
     } else if (st.hand) {
       camera.position.set(st.hand.x, augeZ(), st.hand.y);

@@ -32,10 +32,10 @@ const zufall = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 const gauss = () => { let u = 0; while (!u) u = zufall(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * zufall()); };
 
 let uhr = 0;
-/** Ein Schuss auf den Weltpunkt T = [x, y, z] – so, wie das Handy ihn misst. */
-function schuss(T, g, dtMs = 5000) {
+/** Ein Schuss auf den Weltpunkt T = [x, y, z] – so, wie das Handy ihn misst (Standpunkt `von`). */
+function schuss(T, g, dtMs = 5000, von = S) {
   uhr += dtMs;
-  const dx = T[0] - S[0], dy = T[1] - S[1], D = Math.hypot(dx, dy), zT = T[2] ?? 0;
+  const dx = T[0] - von[0], dy = T[1] - von[1], D = Math.hypot(dx, dy), zT = T[2] ?? 0;
   let th = 0.3;   // Neigung so, dass die Linse (a, z) genau auf T schaut
   for (let k = 0; k < 60; k++) th = Math.atan2(g.hw + g.L * Math.cos(th) - zT, D - (g.r + g.L * Math.sin(th)));
   const psi = Math.atan2(dx, dy);
@@ -44,7 +44,7 @@ function schuss(T, g, dtMs = 5000) {
   return { v: [Math.sin(psM) * Math.cos(thM), Math.cos(psM) * Math.cos(thM), -Math.sin(thM)], t: uhr };
 }
 
-function aufnahme(g, { reihenfolge = L, schluss = false, annahme = 1.45 } = {}) {
+function aufnahme(g, { reihenfolge = L, schluss = false, annahme = 1.45, tuerOben = 1.97 } = {}) {
   uhr = 0;
   const a = A.neueAufnahme(annahme, "fertig");
   a.ecken = reihenfolge.map(p => { const s = schuss(p, g); return { v: s.v, t: s.t, ebene: "boden" }; });
@@ -52,7 +52,7 @@ function aufnahme(g, { reihenfolge = L, schluss = false, annahme = 1.45 } = {}) 
   const u = schuss(L[1], g), o = schuss([...L[1], H], g, 3000);
   a.hoehe = { vUnten: u.v, tUnten: u.t, vOben: o.v, tOben: o.t };
   // Tür in der Nordwand (0,4)→(5,4): ab x = 3,40, 0,885 breit, lichte Höhe 1,97.
-  const t1 = schuss([3.4, 4, 0], g), t2 = schuss([4.285, 4, 1.97], g, 3000);
+  const t1 = schuss([3.4, 4, 0], g), t2 = schuss([4.285, 4, tuerOben], g, 3000);
   a.oeffnungen.push({ id: "t1", art: "TUER", a: t1.v, ta: t1.t, b: t2.v, tb: t2.t });
   // Fenster in der Ostwand: ab 1,00 vom Nordende, 1,20 breit, Brüstung 0,90, Höhe 1,30.
   const f1 = schuss([5, 3.0, 0.9], g), f2 = schuss([5, 1.8, 2.2], g, 3000);
@@ -95,6 +95,7 @@ nah("2 Bandmaße: Kamerahöhe ≈ 1,38", r.kamerahoeheM, 1.38, 0.05);
 nah("2 Bandmaße: Armabstand 0,32 erkannt", r.armM, 0.32, 0.05);
 nah("2 Bandmaße: Raumhöhe 2,62", r.hoeheM, H, 0.03);
 wahr("2 Bandmaße: Klasse AUFMASS", r.klasse === "AUFMASS", `${r.klasse} ${JSON.stringify(r.waende.map(w => w.sigmaM))}`);
+wahr("2 Bandmaße: Schließkorrektur unauffällig", !r.hinweise.some(h => /mehr, als die Messung/.test(h)), r.hinweise.join(" | "));
 wahr("Bandmaß-Wände markiert", r.waende.filter(w => w.quelle === "band").length === 2);
 
 const tuer = r.oeffnungen.find(o => o.id === "t1");
@@ -181,6 +182,24 @@ r = A.rekonstruiere(a);
 wahr(`Raumhöhe als Maßstab: max ${(maxWandFehler(r) * 100).toFixed(1)} cm ≤ 20 cm`, maxWandFehler(r) <= 0.20);
 nah("Raumhöhe als Maßstab: Höhe exakt übernommen", r.hoeheM, H, 1e-9);
 
+// Bekannte Öffnungshöhe = die angezeigte Höhe (C5): beim Fenster mit Brüstung
+// Ober- minus Unterkante (1,30), nicht die Oberkante über dem Boden (2,20).
+a = aufnahme(HAND);
+a.oeffnungen[1].hoeheBekanntM = 1.30;
+r = A.rekonstruiere(a);
+wahr(`Fensterhöhe 1,30 als Maßstab: max ${(maxWandFehler(r) * 100).toFixed(1)} cm ≤ 10 cm`, maxWandFehler(r) <= 0.10);
+nah("Fensterhöhe 1,30 als Maßstab: Fenster 1,30 hoch", r.oeffnungen.find(o => o.id === "f1").hoeheM, 1.30, 0.02);
+nah("Fensterhöhe 1,30 als Maßstab: Brüstung 0,90", r.oeffnungen.find(o => o.id === "f1").bruestungM, 0.90, 0.03);
+// Estrich fehlt (7 cm): die Tür steht 2,04 über dem Rohboden, angezeigt und
+// eingetragen wird die lichte Höhe ab FFB 1,97.
+a = aufnahme(HAND, { tuerOben: 2.04 });
+a.boden = "roh";
+a.oeffnungen[0].hoeheBekanntM = 1.97;
+r = A.rekonstruiere(a, { aufbauM: 0.07 });
+wahr(`Estrich + Türhöhe 1,97 ab FFB: max ${(maxWandFehler(r) * 100).toFixed(1)} cm ≤ 10 cm`, maxWandFehler(r) <= 0.10);
+nah("Estrich + Türhöhe: Tür 1,97 ab FFB", r.oeffnungen.find(o => o.id === "t1").hoeheM, 1.97, 0.02);
+wahr("Estrich + Türhöhe: kalibriert", r.kalibriert && r.klasse !== "SKIZZE", r.klasse);
+
 // --------------------------- 5. Stativ: Höhe bekannt, Neigung kalibriert
 
 const STATIV = { hw: 1.20, r: 0, L: 0.10, biasGrad: 0.4, rauschGrad: 0.05, driftGradProMin: 0 };
@@ -246,6 +265,72 @@ wahr("Vorschau liefert Ecken", vs.punkte.length === 6 && vs.laengen.length === 5
 const al = aufnahme(HAND);
 const live = A.unsicherheitLive(al.ecken[0].v, al);
 wahr(`Live-Unsicherheit ehrlich (${(live * 100).toFixed(0)} cm ≥ 10 cm ohne Maßstab)`, live >= 0.10 && live < 1);
+
+// ------------- 10. Ohne Glätten: fast parallele freie Wände (Review kern#0)
+// Bandmaß auf beiden langen Wänden, die kurzen laufen nur Zehntelgrad
+// gegeneinander. Früher fuhr der Ausgleich sie auf 0,00 m (Fläche 0,13 m²).
+const VIER = [[0, 4], [5, 4.05], [5.03, 0], [0, 0]], S4 = [2.4, 2.1];
+const vierAufnahme = (R, g, s0) => {
+  seed = s0; uhr = 0;
+  const x = A.neueAufnahme(1.45);
+  x.ecken = R.map(q => { const t = schuss(q, g, 5000, S4); return { v: t.v, t: t.t, ebene: "boden" }; });
+  return x;
+};
+const wv = wahreLaengen(VIER);
+a = vierAufnahme(VIER, { ...HAND, rauschGrad: 0.15 }, 3);
+a.rechtwinklig = false;
+wv.forEach((l, i) => { if (l > 4.5) a.bandmasse[i] = l; });
+r = A.rekonstruiere(a);
+wahr(`schief, Bandmaß lang: max ${(maxWandFehler(r, VIER) * 100).toFixed(1)} cm ≤ 10 cm`, maxWandFehler(r, VIER) <= 0.10,
+  JSON.stringify(r.waende.map(w => w.laenge.toFixed(3))));
+nah("schief, Bandmaß lang: Fläche", r.flaecheM2, G.flaechePunkte(VIER), 0.5);
+
+// ----------- 11. Altbau-Ecke 85° bei „rechtwinklig glätten“ (Review kern#3)
+// Die Schließkorrektur (35 cm) ist mehr, als das Rauschen erklärt: Sie gehört
+// in die Unsicherheit der verschobenen Wand, die Klasse darf nicht AUFMASS sein.
+// (Ab ~5° sicher erkannt; eine 87°-Ecke liegt mit ~20 cm an der Rauschgrenze.)
+const ALT = [[0, 4], [5, 4], [5, 0], [0.35, 0]];
+const wa = wahreLaengen(ALT);
+a = vierAufnahme(ALT, { ...HAND, rauschGrad: 0.1 }, 4);
+a.bandmasse = { [wa.findIndex(l => Math.abs(l - 5) < 1e-9)]: 5.0, [wa.findIndex(l => Math.abs(l - 4) < 1e-9)]: 4.0 };
+r = A.rekonstruiere(a);
+wahr("Altbau-Ecke: nicht AUFMASS", r.klasse !== "AUFMASS", `${r.klasse} ${JSON.stringify(r.waende.map(w => [w.laenge.toFixed(3), w.sigmaM.toFixed(3)]))}`);
+wahr("Altbau-Ecke: 2σ deckt jede Wand", r.waende.every((w, i) => 2 * w.sigmaM + 0.005 >= Math.abs(w.laenge - wa[i])),
+  JSON.stringify(r.waende.map((w, i) => [w.laenge.toFixed(3), wa[i].toFixed(3), w.sigmaM.toFixed(3)])));
+wahr("Altbau-Ecke: Hinweis Glätten ausschalten", r.hinweise.some(h => /mehr, als die Messung erklärt/.test(h) && /Rechtwinklig glätten/.test(h)), r.hinweise.join(" | "));
+wahr("Altbau-Ecke: nächstes Maß an der verschobenen Wand", r.naechstesMass && Math.abs(r.waende[r.naechstesMass.wandIndex].korrekturM) > 0.15);
+a.rechtwinklig = false;
+r = A.rekonstruiere(a);
+wahr(`Altbau-Ecke ohne Glätten: max ${(maxWandFehler(r, ALT) * 100).toFixed(1)} cm ≤ 5 cm`, maxWandFehler(r, ALT) <= 0.05);
+// Ohne Glätten hält der Ausgleich die gezielten Richtungen fest – deren Zittern
+// gehört in die Unsicherheit der freien Wände (früher ± 0,5 cm bei 2,4 cm Fehler).
+wahr("Altbau-Ecke ohne Glätten: 2σ deckt jede Wand", r.waende.every((w, i) => 2 * w.sigmaM >= Math.abs(w.laenge - wa[i])),
+  JSON.stringify(r.waende.map((w, i) => [w.laenge.toFixed(3), wa[i].toFixed(3), w.sigmaM.toFixed(3)])));
+
+// ------------ 12. Wende-Kalibrierung mit Linsenversatz (Review kern#2, C6)
+// 1 cm Versatz beim Umdrehen auf ein Ziel in 2 m verfälscht δ um ≈ 0,3°. Das
+// gespeicherte δ ist also nicht ± 0,15° genau; die Unsicherheit muss auch
+// 0,7° daneben (2,5 cm Versatz) noch decken – mit 0,15° lag der Fehler bei 2,7σ.
+a = aufnahme(STATIV, { annahme: 1.30 });
+a.haltung = "stativ";
+a.neigungsfehlerGrad = 0.4 + 0.7;       // wahr 0,4°
+r = A.rekonstruiere(a);
+const wl0 = wahreLaengen();
+wahr("Stativ, δ 0,7° daneben: 2σ deckt jede Wand", r.waende.every((w, i) => 2 * w.sigmaM + 0.005 >= Math.abs(w.laenge - wl0[i])),
+  JSON.stringify(r.waende.map((w, i) => [w.laenge.toFixed(3), wl0[i], w.sigmaM.toFixed(3)])));
+
+// ------------ 13. Laser-Raumhöhe ohne gezielte Kante (Review kern#4, C7)
+a = aufnahme(HAND);
+a.hoehe = null;
+a.raumhoeheM = H;
+r = A.rekonstruiere(a);
+wahr("Laser ohne Kante: kein Maßstab", !r.kalibriert && r.klasse === "SKIZZE", r.klasse);
+const kein = r.hinweise.find(h => /Noch kein Maßstab/.test(h)) || "";
+wahr("Laser ohne Kante: Hinweis empfiehlt den Laser nicht als Maßstab", !/die Raumhöhe \(Laser\) oder/.test(kein) && /erst mit einer gezielten Raumkante/.test(kein), kein);
+wahr("Laser ohne Kante: Höhen-Hinweis verlangt die Kante", r.hinweise.filter(h => /Raumhöhe \(Laser\)/.test(h)).every(h => /Raumkante/.test(h)), r.hinweise.join(" | "));
+a = aufnahme(HAND);
+r = A.rekonstruiere(a);
+wahr("mit Kante: Laser als Maßstab empfohlen", r.hinweise.some(h => /Noch kein Maßstab/.test(h) && /Raumhöhe \(Laser\)/.test(h)));
 
 console.log(`raumaufnahme.test: ${ok} ok, ${fail} fail`);
 if (fail) process.exit(1);

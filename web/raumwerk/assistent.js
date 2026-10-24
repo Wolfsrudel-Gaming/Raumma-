@@ -24,6 +24,7 @@ import * as Z from "../zielen.js";
 import * as A from "../raumaufnahme.js";
 import * as G from "../geometrie.js";
 import * as Normmasse from "../normmasse.js";
+import { waendeMitHerkunft } from "./uebernahme.js";
 
 const NAT = () => window.__native || null;
 const SCHLUESSEL_HOEHE = "raumwerk.kamerahoehe";
@@ -54,7 +55,8 @@ export function starteAssistent(opts) {
     oeffArt: "TUER", oeffTeil: null,
     einbauArt: "STECKDOSE",
     hoeheTeil: null,      // { v, t } – erster Schuss der Raumhöhe
-    kalibTeil: null,      // { v } – erster Schuss der Wende-Kalibrierung
+    kalibTeil: null,      // { v, epoche } – erster Schuss eines Wende-Paars
+    kalibPaare: [],       // δ der fertigen Paare (Grad)
     puffer: [],
     letzteLage: 0,
     band: { waende: startWaende(raum), hoeheM: zahlOder(raum.hoeheM, 2.5), ausgleich: false },
@@ -131,7 +133,7 @@ export function starteAssistent(opts) {
           <small id="asHHinweis">${haltung === "stativ" ? "Einmal mit dem Zollstock messen – dann braucht es oft gar kein Bandmaß mehr." : "Schätzung reicht: Ein Bandmaß, die Raumhöhe oder eine Türhöhe setzt den Maßstab. Dass das Handy vor dem Körper sitzt, rechnet die App heraus."}</small></div>
         <div class="as-kalib ${geraet ? "ok" : ""}">
           <span>${geraet ? `✓ Neigung kalibriert (${komma(geraet.neigungsfehlerGrad, 2)}°, ${new Date(geraet.datum).toLocaleDateString("de-DE")})` : "Neigung nicht kalibriert – kostet ~2–3 cm bei Höhen."}</span>
-          <button class="as-link" id="asKalib">${geraet ? "neu kalibrieren" : "Jetzt kalibrieren (30 s)"}</button>
+          <button class="as-link" id="asKalib">${geraet ? "neu kalibrieren" : "Jetzt kalibrieren (1 min)"}</button>
         </div>
         ${roh ? `<label class="as-schalter"><input type="checkbox" id="asRoh" checked> <span>Estrich fehlt noch – ich ziele auf den <b>Rohboden</b> (Aufbau ${Math.round(Number(raum.aufbauM) * 1000)} mm wird abgezogen)</span></label>` : ""}
         <label class="as-schalter"><input type="checkbox" id="asRecht" checked> <span>Raum ist rechtwinklig (Ecken auf 90° glätten)</span></label>
@@ -141,13 +143,23 @@ export function starteAssistent(opts) {
     wurzel.querySelector(".as-zu").onclick = () => zeige("start");
     wurzel.querySelectorAll("[data-haltung]").forEach(b => b.onclick = () => {
       try { localStorage.setItem(SCHLUESSEL_HALTUNG, b.dataset.haltung); } catch (_) {}
-      const hm = zahl(wurzel.querySelector("#asH").value);
-      if (hm > 0.3 && hm < 2.5) try { localStorage.setItem(SCHLUESSEL_HOEHE, String(hm)); } catch (_) {}
+      const hm = kamerahoeheLesen(wurzel.querySelector("#asH").value);
+      if (hm != null) try { localStorage.setItem(SCHLUESSEL_HOEHE, String(hm)); } catch (_) {}
       vorbereitung();
     });
+    const hFeld = wurzel.querySelector("#asH");
+    hFeld.addEventListener("input", () => hFeld.classList.remove("falsch"));
     const uebernehmenUndLos = phase => {
-      const hm = zahl(wurzel.querySelector("#asH").value);
-      const hh = hm > 0.3 && hm < 2.5 ? hm : 1.4;
+      // Nie still ersetzen: Beim Stativ gilt die Höhe als gemessen (± 5 mm).
+      const hh = kamerahoeheLesen(hFeld.value);
+      if (hh == null) {
+        hFeld.classList.add("falsch"); hFeld.focus();
+        const hinweis = wurzel.querySelector("#asHHinweis");
+        hinweis.textContent = "Bitte die Höhe in Metern angeben, z. B. 1,40 – zwischen 0,30 und 2,50 m.";
+        hinweis.classList.add("falsch");
+        return;
+      }
+      hFeld.value = String(hh).replace(".", ",");     // zeigt, was gilt (aus „162“ wird 1,62)
       try { localStorage.setItem(SCHLUESSEL_HOEHE, String(hh)); } catch (_) {}
       const bodenRoh = !!wurzel.querySelector("#asRoh")?.checked;
       // Eine laufende Aufnahme (zurück aus „Prüfen“) nicht verwerfen.
@@ -157,7 +169,7 @@ export function starteAssistent(opts) {
       st.a.neigungsfehlerGrad = geraetKalibrierung()?.neigungsfehlerGrad ?? null;
       st.a.boden = bodenRoh ? "roh" : "fertig";
       st.a.rechtwinklig = !!wurzel.querySelector("#asRecht")?.checked;
-      if (phase) { st.vorKalib = st.phase; st.phase = phase; st.kalibTeil = null; }
+      if (phase) { st.vorKalib = st.phase; st.phase = phase; st.kalibTeil = null; st.kalibPaare = []; }
       // In der Nutzergeste starten: iOS fragt sonst nicht nach dem Lagesensor.
       lageAn(); kameraAn();
       zeige("zielen");
@@ -179,18 +191,19 @@ export function starteAssistent(opts) {
   function kameraAus() { if (strom) { strom.getTracks().forEach(t => t.stop()); strom = null; } }
 
   function lageAn() {
-    if (lageWeg || !nat || !nat.beiLage) return;
+    if (!nat || !nat.beiLage) return;
+    if (!tasteWeg && nat.beiTaste) tasteWeg = nat.beiTaste(() => { if (st.schritt === "zielen") ausloesen(); });
+    if (lageWeg) return;
     lageWeg = nat.beiLage(o => {
       let v = null;
       if (o && o.qs) v = Z.blickAusQuaternion(o.qs);
       else if (o && o.euler) v = Z.blickAusEuler(o.euler[0], o.euler[1], o.euler[2]);
       if (!v || !v.every(Number.isFinite)) return;
       const t = performance.now();
-      st.puffer.push({ t, v });
+      st.puffer.push({ t, v, epoche: o.epoche });   // Epoche: zählt hoch, wenn der Sensor neu startet
       while (st.puffer.length && st.puffer[0].t < t - 1500) st.puffer.shift();
       st.letzteLage = t;
     });
-    if (nat.beiTaste) tasteWeg = nat.beiTaste(() => { if (st.schritt === "zielen") ausloesen(); });
   }
   function lageAus() {
     if (lageWeg) { lageWeg(); lageWeg = null; }
@@ -201,9 +214,13 @@ export function starteAssistent(opts) {
   /** Gemittelte Blickrichtung kurz VOR dem Auslösen – der Druck selbst wackelt. */
   function blickJetzt(spaetMs = 60, fensterMs = 420) {
     const t = performance.now();
-    let s = st.puffer.filter(p => p.t <= t - spaetMs && p.t >= t - spaetMs - fensterMs);
-    if (s.length < 3) s = st.puffer.slice(-4);
-    return Z.mitteln(s.map(p => p.v));
+    // Nie über einen Neustart des Lagesensors hinweg mitteln: nur die jüngste Epoche.
+    const epoche = st.puffer.length ? st.puffer[st.puffer.length - 1].epoche : undefined;
+    const puffer = st.puffer.filter(p => p.epoche === epoche);
+    let s = puffer.filter(p => p.t <= t - spaetMs && p.t >= t - spaetMs - fensterMs);
+    if (s.length < 3) s = puffer.slice(-4);
+    const m = Z.mitteln(s.map(p => p.v));
+    return m && { ...m, epoche };
   }
 
   function zielen() {
@@ -247,11 +264,21 @@ export function starteAssistent(opts) {
     const a = st.a, n = a.ecken.length;
     switch (st.phase) {
       case "kalib": return {
-        krume: "NEIGUNG KALIBRIEREN · EINMAL JE GERÄT",
-        titel: st.kalibTeil ? "Handy auf den Kopf – dasselbe Ziel" : "Ein kleines Ziel in ~2 m anzielen",
-        text: st.kalibTeil ? "Handy um 180° um die Kamera drehen (Oberkante nach unten) und genau dieselbe Stelle anzielen."
-          : "Z. B. eine Steckdose oder Schraube etwa auf Bauchhöhe. Fadenkreuz drauf, ruhig halten, auslösen.",
+        // Fernes Ziel: Sitzt die Linse 1 cm neben der Wendeachse, kostet das bei
+        // 2 m ~0,3°, bei 10 m nur ~0,06°. Die Auflage an einer Kante hält sie ruhig.
+        krume: `NEIGUNG KALIBRIEREN · PAAR ${st.kalibPaare.length + 1} VON ${KALIB_PAARE}`,
+        titel: st.kalibTeil ? "Handy auf den Kopf – dasselbe Ziel"
+          : st.kalibPaare.length ? "Zur Kontrolle: wieder aufrecht, dasselbe Ziel" : "Ein fernes Ziel anzielen – mindestens 10 m",
+        text: st.kalibTeil ? "Um 180° um die Kamera drehen (Oberkante nach unten), wieder an dieselbe Kante lehnen – die Kamera bleibt auf derselben Höhe – und genau dasselbe Ziel anzielen."
+          : st.kalibPaare.length ? "Ein zweites Paar zeigt, ob die Messung trägt: Handy aufrecht an dieselbe Kante, dasselbe Ziel, auslösen."
+            : "Durchs Fenster oder einen langen Flur entlang, z. B. eine Hausecke oder ein Mast. Handy hochkant mit der Seitenkante fest an eine Kante lehnen (Fensterrahmen, Türzarge), Fadenkreuz drauf, auslösen.",
         weiter: "Abbrechen ›"
+      };
+      case "ausrichten": return {
+        krume: "LAGESENSOR NEU GESTARTET",
+        titel: "Ecke 1 noch einmal anzielen",
+        text: "Die App war unterbrochen, die Richtung zählt neu. Von derselben Stelle aus Ecke 1 anzielen – dann passen die bisherigen Schüsse wieder. Woanders hingestellt? Dann „Ecken neu“.",
+        weiter: "Ecken neu ›"
       };
       case "schluss": return {
         krume: "SCHRITT 1b · KONTROLLE",
@@ -327,8 +354,8 @@ export function starteAssistent(opts) {
     const a = st.a;
     const { p } = A.parameterStart(a);
     const H = A.raumhoehe(a, p);
-    if (st.phase === "kalib" || st.phase === "schluss") {
-      return { ok: true, wert: `${komma(Z.neigungGrad(v), 1)}°`, info: st.phase === "kalib" ? "Neigung" : "Kontrollschuss auf Ecke 1" };
+    if (st.phase === "kalib" || st.phase === "schluss" || st.phase === "ausrichten") {
+      return { ok: true, wert: `${komma(Z.neigungGrad(v), 1)}°`, info: st.phase === "kalib" ? "Neigung" : st.phase === "schluss" ? "Kontrollschuss auf Ecke 1" : "Ecke 1 erneut" };
     }
     if (st.phase === "ecken" || (st.phase === "hoehe" && !st.hoeheTeil)) {
       if (st.phase === "ecken" && st.ziel === "decke") {
@@ -415,43 +442,62 @@ export function starteAssistent(opts) {
     const v = m.v.map(x => Math.round(x * 1e6) / 1e6);
     const t = Date.now();
     const a = st.a;
-    if (st.phase === "kalib") {
-      if (!st.kalibTeil) { st.kalibTeil = { v }; brumm(); }
+    const ep = m.epoche;
+    if (st.phase !== "kalib" && st.phase !== "ausrichten" && a.ecken.length && a.ecken[0].epoche !== ep) {
+      // Lagesensor neu gestartet: Die Gier zählt ab einem neuen Bezug. Nicht
+      // still mischen – erst Ecke 1 erneut anzielen (oder Ecken neu).
+      st.vorAusrichten = st.phase; st.phase = "ausrichten"; st.oeffTeil = null; st.hoeheTeil = null;
+      brumm(); melde("Lagesensor neu gestartet – erst Ecke 1 noch einmal anzielen.");
+      chipsMalen(); return;
+    }
+    if (st.phase === "ausrichten") {
+      const r = neuAusrichten(a, v, ep);
+      brumm();
+      if (!r.ok) melde(`Ecke 1 passt nicht (Neigung ${komma(r.abweichungGrad, 1)}° anders) – dieselbe Stelle? Sonst „Ecken neu“.`);
+      else { melde("Wieder ausgerichtet – weiter wie vorher."); st.phase = st.vorAusrichten || "ecken"; st.vorAusrichten = null; }
+    } else if (st.phase === "kalib") {
+      if (st.kalibTeil && st.kalibTeil.epoche !== ep) { st.kalibTeil = null; melde("Lagesensor neu gestartet – dieses Paar von vorn, erst aufrecht."); }
+      else if (!st.kalibTeil) { st.kalibTeil = { v, epoche: ep }; brumm(); }
       else {
         const d = Z.neigungsfehlerGrad(st.kalibTeil.v, v);
         st.kalibTeil = null; brumm();
-        if (Math.abs(d) > 3) melde("Unplausibel (> 3°) – bitte genauer dasselbe Ziel treffen.");
+        const k = kalibAuswerten(st.kalibPaare, d);
+        st.kalibPaare = k.paare;
+        if (k.status === "unplausibel") melde(`Unplausibel (${komma(d, 2)}°) – fernes Ziel, Handy an der Kante, genau dasselbe Ziel treffen.`);
+        else if (k.status === "abweichung") melde(`Die Paare weichen ${komma(k.abweichungGrad, 2)}° ab – noch ein Paar.`);
+        else if (k.status === "weiter") melde(`Paar 1: ${komma(d, 2)}° – jetzt das Kontrollpaar.`);
         else {
-          geraetSpeichern({ neigungsfehlerGrad: Math.round(d * 100) / 100, datum: new Date().toISOString() });
-          a.neigungsfehlerGrad = Math.round(d * 100) / 100;
-          melde(`Neigung kalibriert: ${komma(d, 2)}°`);
+          const g = Math.round(k.deltaGrad * 100) / 100;
+          geraetSpeichern({ neigungsfehlerGrad: g, datum: new Date().toISOString() });
+          a.neigungsfehlerGrad = g;
+          melde(`Neigung kalibriert: ${komma(g, 2)}°`);
           st.phase = st.vorKalib || "ecken"; st.vorKalib = null;
         }
       }
     } else if (st.phase === "ecken") {
-      a.ecken.push({ v, t, ebene: st.ziel });
+      a.ecken.push({ v, t, ebene: st.ziel, epoche: ep });
       brumm(); melde(`Ecke ${a.ecken.length} gesetzt`);
     } else if (st.phase === "schluss") {
-      a.schluss = { v, t }; brumm(); melde("Kontrollschuss gespeichert");
+      a.schluss = { v, t, epoche: ep }; brumm(); melde("Kontrollschuss gespeichert");
       st.phase = a.hoehe || a.raumhoeheM ? "oeffnung" : "hoehe";
     } else if (st.phase === "hoehe") {
       if (!st.hoeheTeil) { st.hoeheTeil = { v, t }; brumm(); }
       else {
-        a.hoehe = { vUnten: st.hoeheTeil.v, tUnten: st.hoeheTeil.t, vOben: v, tOben: t }; st.hoeheTeil = null; brumm();
+        a.hoehe = { vUnten: st.hoeheTeil.v, tUnten: st.hoeheTeil.t, vOben: v, tOben: t, epoche: ep }; st.hoeheTeil = null; brumm();
         const Hm = A.raumhoeheAusKante(a, A.parameterStart(a).p);
         melde(Hm ? `Raumhöhe ≈ ${meter(Hm)}` : "Raumhöhe gespeichert");
-        st.phase = st.vorHoehe || "oeffnung"; st.vorHoehe = null;
+        if (nachHoehe()) return;
         if (st.phase === "ecken") st.ziel = "decke";
       }
     } else if (st.phase === "oeffnung") {
       if (!st.oeffTeil) { st.oeffTeil = { v, t }; brumm(); }
       else {
-        a.oeffnungen.push({ id: neueId("oef"), art: st.oeffArt, a: st.oeffTeil.v, ta: st.oeffTeil.t, b: v, tb: t });
+        a.oeffnungen.push({ id: neueId("oef"), art: st.oeffArt, a: st.oeffTeil.v, ta: st.oeffTeil.t, b: v, tb: t, epoche: ep });
         st.oeffTeil = null; brumm(); melde(`${artWort(st.oeffArt)} erfasst`);
       }
     } else {
       const bef = Normmasse.befestigung(st.einbauArt) === "DECKE" ? "DECKE" : "WAND";
-      a.einbauten.push({ id: neueId("ein"), art: st.einbauArt, befestigung: bef, v, t });
+      a.einbauten.push({ id: neueId("ein"), art: st.einbauArt, befestigung: bef, v, t, epoche: ep });
       brumm(); melde(`${Normmasse.ARTEN.get(st.einbauArt) || st.einbauArt} erfasst`);
     }
     chipsMalen();
@@ -463,14 +509,18 @@ export function starteAssistent(opts) {
     if (!a) return false;
     if (st.phase === "kalib") {
       if (st.kalibTeil) st.kalibTeil = null;
+      else if (st.kalibPaare.length) st.kalibPaare.pop();
       else { st.phase = st.vorKalib || "ecken"; st.vorKalib = null; }
     } else if (st.phase === "ecken") {
       if (!a.ecken.length) return false;
       a.ecken.pop(); melde("Letzte Ecke entfernt");
+    } else if (st.phase === "ausrichten") {
+      return false;
     } else if (st.phase === "schluss") {
       st.phase = "ecken";
     } else if (st.phase === "hoehe") {
       if (st.hoeheTeil) st.hoeheTeil = null;
+      else if (st.vorHoehe === "pruefen") { nachHoehe(); return true; }
       else { st.phase = st.vorHoehe || (a.schluss ? "schluss" : "ecken"); st.vorHoehe = null; if (st.phase === "schluss") a.schluss = null; }
     } else if (st.phase === "oeffnung") {
       if (st.oeffTeil) st.oeffTeil = null;
@@ -485,16 +535,32 @@ export function starteAssistent(opts) {
   }
 
   function weiter() {
-    if (st.phase === "kalib") { st.kalibTeil = null; st.phase = st.vorKalib || "ecken"; st.vorKalib = null; }
-    else if (st.phase === "ecken") {
+    if (st.phase === "kalib") { st.kalibTeil = null; st.kalibPaare = []; st.phase = st.vorKalib || "ecken"; st.vorKalib = null; }
+    else if (st.phase === "ausrichten") {
+      // Woanders hingestellt: Alles, was an der Richtung hängt, neu anzielen –
+      // auch die Bandmaße (ihre Wandnummern gehören zum alten Umriss). Die
+      // Raumhöhe (eine senkrechte Kante, zwei Schüsse) bleibt gültig.
+      Object.assign(st.a, { ecken: [], schluss: null, oeffnungen: [], einbauten: [], bandmasse: {} });
+      st.phase = "ecken"; st.ziel = "boden"; st.vorAusrichten = null;
+      melde("Neu beginnen: Ecken anzielen.");
+    } else if (st.phase === "ecken") {
       if (st.a.ecken.length < 3) return;
       st.phase = st.a.ecken.length >= 4 && !st.a.schluss ? "schluss" : (st.a.hoehe || st.a.raumhoeheM ? "oeffnung" : "hoehe");
       st.hoeheTeil = null;
     } else if (st.phase === "schluss") { st.phase = st.a.hoehe || st.a.raumhoeheM ? "oeffnung" : "hoehe"; }
-    else if (st.phase === "hoehe") { st.hoeheTeil = null; st.phase = st.vorHoehe || "oeffnung"; st.vorHoehe = null; }
+    else if (st.phase === "hoehe") { if (nachHoehe()) return; }
     else if (st.phase === "oeffnung") { st.oeffTeil = null; st.phase = "einbau"; }
     else { zeige("pruefen"); return; }
     chipsMalen();
+  }
+
+  /** Raumhöhe fertig oder übersprungen: zurück, woher der Schritt kam – true, wenn das die Prüfseite ist. */
+  function nachHoehe() {
+    const ziel = st.vorHoehe || "oeffnung";
+    st.vorHoehe = null; st.hoeheTeil = null;
+    if (ziel === "pruefen") { st.phase = "einbau"; zeige("pruefen"); return true; }
+    st.phase = ziel;
+    return false;
   }
 
   let meldT = 0;
@@ -507,7 +573,10 @@ export function starteAssistent(opts) {
   // ============================================================ Prüfen
 
   function pruefen() {
-    lageAus(); kameraAus();
+    // Die Lage bleibt angemeldet: Ein Neustart des Sensors zählt die Richtung
+    // neu (neue Epoche) – jeder Rückweg zum Zielen hieße sonst Ecke 1 neu.
+    kameraAus(); cancelAnimationFrame(schleife);
+    if (tasteWeg) { tasteWeg(); tasteWeg = null; }
     const a = st.a;
     const r = A.rekonstruiere(a, { aufbauM: raum.aufbauM });
     wurzel.className = "as-wurzel as-hell";
@@ -532,7 +601,8 @@ export function starteAssistent(opts) {
           <span class="as-klasse ${r.klasse.toLowerCase()}">${r.klasse === "AUFMASS" ? "AUFMASS" : r.klasse === "PLAN" ? "PLAN" : "SKIZZE"}</span>
           ${r.klasse === "AUFMASS" ? `<b>Zentimetergenau.</b> Jede Wand ± ${Math.max(1, Math.round(Math.max(...r.waende.map(w => w.sigmaM)) * 100))} cm oder besser.`
             : r.kalibriert ? `<b>Maßstab gesetzt</b>, aber noch nicht überall zentimetergenau.`
-              : `<b>Form stimmt, Maßstab fehlt.</b> Ein bekanntes Maß genügt: eine Wand mit dem Bandmaß, die Raumhöhe (Laser nach oben) oder die Höhe einer Tür (Norm-Innentür lichte Höhe ≈ 1,97 m).`}
+              : `<b>Form stimmt, Maßstab fehlt.</b> Ein bekanntes Maß genügt: eine Wand mit dem Bandmaß, die Höhe einer Tür (Norm-Innentür lichte Höhe ≈ 1,97 m)${a.hoehe ? " oder die Raumhöhe (Laser nach oben)."
+                : `. Die Raumhöhe vom Laser zählt erst, wenn die Raumkante gezielt ist: <button class="as-link" data-zurhoehe>Raumkante anzielen ›</button>`}`}
           ${r.naechstesMass ? `<br><span class="as-tipp">→ ${esc(r.naechstesMass.text)}</span>` : ""}
           <br><small>Ausgeglichen: Kamerahöhe ${komma(r.kamerahoeheM, 2)} m · Handy ${Math.round(r.armM * 100)} cm vor der Drehachse · Höhen ± ${Math.max(1, Math.round(r.sigmaHoeheM * 100))} cm${a.neigungsfehlerGrad != null ? ` · Neigung kalibriert` : ""}</small>
         </div>
@@ -546,18 +616,22 @@ export function starteAssistent(opts) {
           </div>`).join("")}
           <div class="as-zeile">
             <span class="as-nr">H</span>
-            <span class="as-mass"><b>${r.hoeheM ? komma(r.hoeheM, 2) + " m" : "–"}</b><small>Raumhöhe${a.hoehe ? " · gezielt" : ""}</small></span>
+            <span class="as-mass"><b>${r.hoeheM ? komma(r.hoeheM, 2) + " m" : "–"}</b><small>Raumhöhe${a.hoehe ? " · gezielt"
+              : ` · Laser setzt erst mit <button class="as-link" data-zurhoehe>gezielter Kante</button> den Maßstab`}</small></span>
             <input class="as-eingabe" id="asRaumH" inputmode="decimal" placeholder="Laser" value="${a.raumhoeheM ? komma(a.raumhoeheM, 2) : ""}">
           </div>
         </div>
-        ${r.oeffnungen.length ? `<h3 class="as-h3">Öffnungen <small>Höhe bekannt? Dann eintragen – sie dient als Maßstab</small></h3>
+        ${r.oeffnungen.length ? `<h3 class="as-h3">Öffnungen <small>Höhe H bekannt? Eintragen – sie setzt den Maßstab. Tür: lichte Höhe ab Fertigfußboden, Fenster: Höhe ohne Brüstung</small></h3>
         <div class="as-zeilen">${r.oeffnungen.map(o => {
           const roh = a.oeffnungen.find(x => x.id === o.id) || {};
+          // Dieselbe Größe wie das angezeigte H (raumaufnahme.js rechnet sie so).
+          const lichte = !(o.art === "FENSTER" && o.bruestungM > 0);
+          const wort = lichte ? "lichte Höhe ab Fertigfußboden" : "Fensterhöhe ohne Brüstung";
           return `<div class="as-zeile">
             <span class="as-nr">${artWort(o.art).slice(0, 1)}</span>
             <span class="as-mass"><b>${artWort(o.art)} · Wand ${o.wandIndex + 1}</b>
-              <small>${cm(o.breiteM)} × ${cm(o.hoeheM)}${o.bruestungM > 0 ? ` · Brüstung ${cm(o.bruestungM)}` : ""} · ab ${komma(o.abstandM, 2)} m</small></span>
-            <input class="as-eingabe" data-oeffh="${esc(o.id)}" inputmode="decimal" placeholder="${o.art === "TUER" ? "z. B. 1,97" : "Höhe"}" value="${roh.hoeheBekanntM ? komma(roh.hoeheBekanntM, 2) : ""}">
+              <small>B ${cm(o.breiteM)} × H ${cm(o.hoeheM)}${o.bruestungM > 0 ? ` · Brüstung ${cm(o.bruestungM)}` : ""} · ab ${komma(o.abstandM, 2)} m</small></span>
+            <input class="as-eingabe" data-oeffh="${esc(o.id)}" inputmode="decimal" placeholder="${o.art === "TUER" ? "z. B. 1,97" : lichte ? "lichte H" : "Fensterhöhe"}" aria-label="Bekannte ${wort} (m)" title="Bekannte ${wort} (m)" value="${roh.hoeheBekanntM ? komma(roh.hoeheBekanntM, 2) : ""}">
             <button class="as-weg" data-oeffweg="${esc(o.id)}" aria-label="Entfernen">✕</button>
           </div>`; }).join("")}</div>` : ""}
         ${r.einbauten.length ? `<h3 class="as-h3">Installation</h3>
@@ -590,15 +664,14 @@ export function starteAssistent(opts) {
     wurzel.querySelectorAll("[data-oeffweg]").forEach(b => b.onclick = () => { a.oeffnungen = a.oeffnungen.filter(x => x.id !== b.dataset.oeffweg); pruefen(); });
     wurzel.querySelectorAll("[data-einweg]").forEach(b => b.onclick = () => { a.einbauten = a.einbauten.filter(x => x.id !== b.dataset.einweg); pruefen(); });
     wurzel.querySelector("#asRecht2").onchange = e => { a.rechtwinklig = e.target.checked; pruefen(); };
+    // Ohne gezielte Raumkante setzt die Laser-Raumhöhe keinen Maßstab: zum Schritt Raumhöhe springen.
+    wurzel.querySelectorAll("[data-zurhoehe]").forEach(b => b.onclick = () => {
+      st.vorHoehe = "pruefen"; st.phase = "hoehe"; st.hoeheTeil = null;
+      zeige("zielen"); lageAn(); kameraAn();
+    });
     wurzel.querySelector("#asOk").onclick = () => {
-      const r2 = A.rekonstruiere(a, { aufbauM: raum.aufbauM });
-      beenden({
-        methode: "zielen", umriss: r2.umriss, hoeheM: r2.hoeheM,
-        oeffnungen: r2.oeffnungen,
-        einbauten: r2.einbauten.map(e => ({ ...e, hoeheM: e.hoeheM ?? (e.befestigung === "DECKE" ? r2.hoeheM : Normmasse.hoehe(e.art)) })),
-        waende: r2.waende, kamerahoeheM: r2.kamerahoeheM, kalibriert: r2.kalibriert, klasse: r2.klasse,
-        aufnahme: JSON.parse(JSON.stringify(a)), hinweise: r2.hinweise
-      });
+      const e = zielErgebnis(a, raum.aufbauM);
+      if (e) beenden(e);
     };
   }
 
@@ -630,10 +703,17 @@ export function starteAssistent(opts) {
         <button class="as-zweit klein" id="asPlus">+ Wand</button>
         <div class="as-massstab ${erg && erg.restluecke < 0.02 ? "ok" : "offen"}">${bandText(erg)}</div>
         <div class="as-feld"><label for="asBandH">Raumhöhe (m)</label><input id="asBandH" inputmode="decimal" value="${komma(b.hoeheM, 2)}"></div>
-        <button class="as-haupt" id="asOk" ${erg && erg.punkte.length >= 3 ? "" : "disabled"}>Übernehmen ✓</button>
+        <button class="as-haupt" id="asOk" ${bandGueltig(erg) ? "" : "disabled"}>Übernehmen ✓</button>
       </div>`;
     wurzel.querySelector(".as-zu").onclick = () => zeige("start");
-    wurzel.querySelectorAll("[data-l]").forEach(inp => inp.onchange = () => { b.waende[Number(inp.dataset.l)].laenge = zahl(inp.value) || null; b.ausgleich = false; bandSeite(); });
+    wurzel.querySelectorAll("[data-l]").forEach(inp => {
+      // Nur was hier getippt wird, zählt als Bandmaß – nicht die Vorbefüllung.
+      inp.oninput = () => { b.waende[Number(inp.dataset.l)].gemessen = true; };
+      inp.onchange = () => {
+        const w = b.waende[Number(inp.dataset.l)];
+        w.laenge = zahl(inp.value) || null; w.gemessen = w.laenge > 0; b.ausgleich = false; bandSeite();
+      };
+    });
     wurzel.querySelectorAll("[data-d]").forEach(btn => btn.onclick = () => {
       const i = Number(btn.dataset.d);
       b.waende[i].drehung = btn.dataset.w === "frei" ? 45 : Number(btn.dataset.w);   // 45° = typischer Erker
@@ -646,24 +726,19 @@ export function starteAssistent(opts) {
       bandSeite();
     });
     wurzel.querySelectorAll("[data-weg]").forEach(btn => btn.onclick = () => { b.waende.splice(Number(btn.dataset.weg), 1); bandSeite(); });
-    wurzel.querySelector("#asPlus").onclick = () => { b.waende.push({ laenge: null, drehung: 90 }); bandSeite(); };
+    wurzel.querySelector("#asPlus").onclick = () => { b.waende.push({ laenge: null, drehung: 90, gemessen: false }); bandSeite(); };
     const ag = wurzel.querySelector("#asAusgl");
     if (ag) ag.onclick = () => { b.ausgleich = true; bandSeite(); };
     wurzel.querySelector("#asBandH").onchange = e => { const m = zahl(e.target.value); if (m > 0) b.hoeheM = m; };
     wurzel.querySelector("#asOk").onclick = () => {
-      const e = bandRechnen(b);
-      if (!e) return;
-      beenden({
-        methode: "band", umriss: G.umrissSchreiben(e.punkte), hoeheM: b.hoeheM,
-        oeffnungen: [], einbauten: [],
-        waende: e.waende.map((w, i) => ({ laenge: w.laenge, quelle: i === e.berechnet || b.ausgleich ? "getippt" : "band", sigmaM: i === e.berechnet ? null : 0.005 })),
-        aufnahme: null
-      });
+      const e = bandErgebnis(b);
+      if (e) beenden(e);
     };
   }
 
   function bandText(erg) {
     if (!erg) return "Mindestens drei Wände mit Länge eintragen.";
+    if (erg.restluecke < 0.02 && !bandGueltig(erg)) return `<b>Schließt, ergibt aber keinen Raum:</b> ${esc(G.pruefen(erg.punkte).join(" "))}`;
     if (erg.berechnet != null)
       return erg.restluecke < 0.02 ? `<b>✓ Schließt.</b> Wand ${erg.berechnet + 1} ergibt sich zu ${komma(erg.waende[erg.berechnet].laenge, 2)} m.`
         : `<b>Passt nicht ganz:</b> ${Math.round(erg.restluecke * 100)} cm Lücke bleiben – stimmen die Abbiegungen?`;
@@ -686,14 +761,15 @@ export function starteAssistent(opts) {
         <button class="as-haupt" id="asOk">Übernehmen ✓</button>
       </div>`;
     wurzel.querySelector(".as-zu").onclick = () => zeige("start");
+    // Vorbefüllte Breite/Tiefe (z. B. der 3 × 3-Platzhalter) sind nicht gemessen.
+    const gemessen = { b: false, t: false };
+    wurzel.querySelector("#asRB").oninput = () => { gemessen.b = true; };
+    wurzel.querySelector("#asRT").oninput = () => { gemessen.t = true; };
     wurzel.querySelector("#asOk").onclick = () => {
       const bb = zahl(wurzel.querySelector("#asRB").value), tt = zahl(wurzel.querySelector("#asRT").value), hh = zahl(wurzel.querySelector("#asRH").value);
-      if (!(bb > 0) || !(tt > 0)) { alert("Breite und Tiefe angeben."); return; }
-      beenden({
-        methode: "rechteck", umriss: "", breiteM: bb, tiefeM: tt, hoeheM: hh > 0 ? hh : null,
-        oeffnungen: [], einbauten: [], aufnahme: null,
-        waende: [bb, tt, bb, tt].map(laenge => ({ laenge, quelle: "band", sigmaM: 0.005 }))
-      });
+      const e = rechteckErgebnis(bb, tt, hh, gemessen);
+      if (!e) { alert("Breite und Tiefe angeben."); return; }
+      beenden(e);
     };
   }
 
@@ -713,6 +789,73 @@ export function starteAssistent(opts) {
 
   zeige(opts.start === "band" ? "band" : opts.start === "rechteck" ? "rechteck" : opts.start === "zielen" ? "vorbereitung" : "start");
   return { beenden: () => beenden(null), zustand: st };
+}
+
+// ======================================================== Ergebnisse
+
+/** Ergebnis einer Zielaufnahme für die Übernahme (Knopf „Übernehmen ✓“ der Prüfseite). */
+export function zielErgebnis(a, aufbauM) {
+  const r = A.rekonstruiere(a, { aufbauM });
+  if (!r) return null;
+  return {
+    methode: "zielen", umriss: r.umriss, hoeheM: r.hoeheM,
+    oeffnungen: r.oeffnungen,
+    einbauten: r.einbauten.map(e => ({ ...e, hoeheM: e.hoeheM ?? (e.befestigung === "DECKE" ? r.hoeheM : Normmasse.hoehe(e.art)) })),
+    waende: r.waende, kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse,
+    aufnahme: JSON.parse(JSON.stringify(a)), hinweise: r.hinweise
+  };
+}
+
+// ============================================== Neustart des Lagesensors
+
+/** Neigungsabweichung, bis zu der ein neuer Schuss auf Ecke 1 als dieselbe Stelle gilt (Grad). */
+export const AUSRICHTEN_MAX_GRAD = 1.5;
+
+/**
+ * Nach einem Neustart des Lagesensors (neue Epoche, z. B. App kurz im
+ * Hintergrund) zählt die Gier ab einem neuen Bezug. Ein neuer Schuss `v` auf
+ * Ecke 1 liefert den Versatz; alle Schüsse der alten Epoche werden um die
+ * Senkrechte in den neuen Bezug gedreht. Weicht die Neigung zu stark ab, stand
+ * das Handy woanders – dann bleibt alles, wie es ist.
+ * → { ok, versatzGrad?, abweichungGrad? }
+ */
+export function neuAusrichten(a, v, epoche) {
+  const e0 = a.ecken && a.ecken[0];
+  if (!e0) return { ok: false, abweichungGrad: NaN };
+  const dn = Z.neigungGrad(v) - Z.neigungGrad(e0.v);
+  if (!(Math.abs(dn) <= AUSRICHTEN_MAX_GRAD)) return { ok: false, abweichungGrad: dn };
+  const alt = e0.epoche;
+  const phi = Math.atan2(v[0], v[1]) - Math.atan2(e0.v[0], e0.v[1]);
+  const c = Math.cos(phi), s = Math.sin(phi);
+  const dreh = w => [w[0] * c + w[1] * s, w[1] * c - w[0] * s, w[2]].map(x => Math.round(x * 1e6) / 1e6);
+  const schuesse = [...a.ecken, a.schluss, a.hoehe, ...(a.senkrechte || []), ...(a.oeffnungen || []), ...(a.einbauten || [])];
+  for (const x of schuesse) {
+    if (!x || x.epoche !== alt) continue;
+    for (const k of ["v", "vUnten", "vOben", "a", "b"]) if (Array.isArray(x[k])) x[k] = dreh(x[k]);
+    x.epoche = epoche;
+  }
+  return { ok: true, versatzGrad: phi / Z.GRAD };
+}
+
+// ====================================================== Wende-Kalibrierung
+
+/** Plausibler Neigungsfehler je Paar, nötige Paare, erlaubte Abweichung (Grad). */
+export const KALIB_MAX_GRAD = 1.5, KALIB_PAARE = 2, KALIB_EINIG_GRAD = 0.2;
+
+/**
+ * Ein Wende-Paar (normal + auf dem Kopf) auswerten. Über 1,5° ist es
+ * unplausibel (Ziel verfehlt, Linse gewandert) und zählt nicht. Zwei Paare
+ * müssen auf 0,2° übereinstimmen, dann gilt ihr Mittel; sonst bleibt das
+ * jüngste stehen und ein weiteres muss dazu passen.
+ * → { status: "unplausibel" | "weiter" | "abweichung" | "fertig", paare, deltaGrad?, abweichungGrad? }
+ */
+export function kalibAuswerten(paare, d) {
+  if (!Number.isFinite(d) || Math.abs(d) > KALIB_MAX_GRAD) return { status: "unplausibel", paare: paare.slice() };
+  const neu = [...paare, d];
+  if (neu.length < KALIB_PAARE) return { status: "weiter", paare: neu };
+  const [p1, p2] = neu.slice(-2);
+  if (Math.abs(p1 - p2) > KALIB_EINIG_GRAD) return { status: "abweichung", paare: [p2], abweichungGrad: Math.abs(p1 - p2) };
+  return { status: "fertig", paare: [], deltaGrad: (p1 + p2) / 2 };
 }
 
 // ======================================================= Maßband-Rechnung
@@ -750,10 +893,62 @@ export function bandRechnen(b) {
   return { punkte: G.normieren(p), waende, restluecke, berechnet };
 }
 
-function startWaende(raum) {
+/**
+ * Ein Zug gilt erst, wenn er schließt (Restlücke unter 2 cm), sich nicht
+ * selbst kreuzt und eine echte Fläche hat – sonst fielen die letzte Länge und
+ * die vorletzte Abbiegung still unter den Tisch.
+ */
+export function bandGueltig(erg) {
+  return !!erg && erg.punkte.length >= 3 && erg.restluecke < 0.02
+    && !G.schneidetSichSelbst(erg.punkte) && G.flaechePunkte(erg.punkte) >= 0.5;
+}
+
+/**
+ * Ergebnis der Maßband-Seite – oder null, solange der Zug nicht gilt. Als
+ * Bandmaß zählt nur, was der Nutzer eingetippt hat; vorbefüllte Längen
+ * behalten ihre alte Herkunft, berechnete und verteilte gelten als getippt.
+ */
+export function bandErgebnis(b) {
+  const e = bandRechnen(b);
+  if (!bandGueltig(e)) return null;
+  return {
+    methode: "band", umriss: G.umrissSchreiben(e.punkte), hoeheM: b.hoeheM,
+    oeffnungen: [], einbauten: [],
+    waende: e.waende.map((w, i) => {
+      const x = b.waende[i] || {};
+      if (i === e.berechnet || b.ausgleich) return { laenge: w.laenge, quelle: "getippt", sigmaM: null };
+      if (x.gemessen) return { laenge: w.laenge, quelle: "band", sigmaM: 0.005 };
+      return { laenge: w.laenge, quelle: x.quelle || "getippt", sigmaM: x.quelle ? (x.sigmaM ?? null) : null };
+    }),
+    aufnahme: null
+  };
+}
+
+/**
+ * Ergebnis der Rechteck-Seite. Gemessen sind höchstens Breite (Wand 1) und
+ * Tiefe (Wand 2), und nur, wenn sie eingetippt wurden; Wand 3 und 4 ergeben
+ * sich aus dem Rechteck. So hält ein späteres Nachmessen den Raum rechtwinklig.
+ */
+export function rechteckErgebnis(bb, tt, hh, gemessen = {}) {
+  if (!(bb > 0) || !(tt > 0)) return null;
+  const band = [!!gemessen.b, !!gemessen.t];
+  return {
+    methode: "rechteck", umriss: "", breiteM: bb, tiefeM: tt, hoeheM: hh > 0 ? hh : null,
+    oeffnungen: [], einbauten: [], aufnahme: null,
+    waende: [bb, tt, bb, tt].map((laenge, i) => (i < 2 && band[i]
+      ? { laenge, quelle: "band", sigmaM: 0.005 } : { laenge, quelle: "getippt", sigmaM: null }))
+  };
+}
+
+/** Vorbefüllung aus dem bisherigen Umriss – mit Herkunft, aber nicht als „gemessen“. */
+export function startWaende(raum) {
   const pts = G.umrissLesen(raum && raum.umriss);
-  if (pts) return G.waende(pts).map(w => ({ laenge: w.laenge, drehung: w.drehung }));
-  return [{ laenge: null, drehung: 90 }, { laenge: null, drehung: 90 }, { laenge: null, drehung: 90 }, { laenge: null, drehung: 90 }];
+  if (pts) {
+    const her = waendeMitHerkunft(raum);
+    return G.waende(pts).map((w, i) => ({ laenge: w.laenge, drehung: w.drehung, gemessen: false,
+      quelle: her[i]?.quelle || null, sigmaM: her[i]?.sigmaM ?? null }));
+  }
+  return [0, 1, 2, 3].map(() => ({ laenge: null, drehung: 90, gemessen: false }));
 }
 
 // ============================================================ Darstellung
@@ -844,6 +1039,7 @@ function stilEinhaengen() {
 .as-feld input, .as-eingabe { font: inherit; font-size: 17px; padding: 10px 12px; border-radius: 8px; border: 1.5px solid var(--line, #cfc5b8);
   background: var(--card, #fff); color: inherit; width: 100%; box-sizing: border-box; min-height: 46px; }
 .as-feld small { display: block; font-size: 12.5px; opacity: .7; margin-top: 5px; }
+.as-feld input.falsch { border-color: #c0392b; box-shadow: 0 0 0 2px rgba(192,57,43,.25); } .as-feld small.falsch { color: #b0281a; opacity: 1; font-weight: 600; }
 .as-schalter { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; font-size: 14.5px; line-height: 1.4; cursor: pointer; }
 .as-schalter input { width: 22px; height: 22px; flex: 0 0 22px; accent-color: var(--as-akz); margin: 0; }
 .as-haupt { display: block; width: 100%; min-height: 54px; margin-top: 14px; border: 0; border-radius: 10px; background: var(--as-akz); color: #fff;
@@ -931,6 +1127,16 @@ function el(tag, cls) { const n = document.createElement(tag); if (cls) n.classN
 function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 /** Zahl aus einer Eingabe – Komma oder Punkt, Leerzeichen egal. */
 export function zahl(t) { const n = parseFloat(String(t ?? "").replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) ? n : NaN; }
+/**
+ * Kamerahöhe aus dem Eingabefeld (m, über 0,3 und unter 2,5). Werte über 30
+ * und unter 250 sind am Zollstock abgelesene Zentimeter. Alles andere: null.
+ */
+export function kamerahoeheLesen(t) {
+  const m = zahl(t);
+  if (m > 0.3 && m < 2.5) return m;
+  if (m > 30 && m < 250) return Math.round(m * 10) / 1000;
+  return null;
+}
 function zahlOder(v, f) { const n = Number(v); return n > 0 ? n : f; }
 function komma(v, n = 2) { return Number(v).toFixed(n).replace(".", ","); }
 function meter(m) { return `${komma(m, 2)} m`; }

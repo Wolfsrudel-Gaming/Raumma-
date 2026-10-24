@@ -290,6 +290,62 @@ function qMalTest(p, q) {
   ];
 }
 
+// --------------- Neigungsfehler: Bild und Zielvorschau zeigen den Setzen-Strahl
+
+{
+  // Die AR-Kamera blickte ohne δ, „Setzen" rechnete mit δ (kameraImRaum): Bei
+  // δ = 1,5° zeigte die Vorschau an der Wand ~7 cm neben der gesetzten Höhe.
+  const pose = { drehungRad: 0.3, verschiebung: [2.5, 2.0], kamerahoeheM: 1.4, modell: Au.haltungFreihand(1.5) };
+  const ecken = [[0, 0], [5, 0], [5, 4], [0, 4]];
+  const raumAchsen = u => [u[0], u[2], u[1]];               // three.js [x, Höhe, Raum-y] → Raum
+  const kreuz = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const punkt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const einheit = a => { const l = Math.hypot(...a); return a.map(c => c / l); };
+  /** Rollwinkel der Kamera um ihre Blickachse (three.js-Achsen). */
+  const rollen = q => {
+    const f = Au.dreheVektor(q, [0, 0, -1]), r = Au.dreheVektor(q, [1, 0, 0]);
+    const waag = einheit(kreuz(f, [0, 1, 0])), hoch = kreuz(waag, f);
+    return Math.atan2(punkt(r, hoch), punkt(r, waag));
+  };
+  const geraetQuer = qMalTest(Au.geraetQuaternion({ euler: [0, 80, 0] }), [Math.cos(Math.PI / 4), 0, 0, Math.sin(Math.PI / 4)]);
+  const faelle = [
+    ["hochkant", { euler: [30, 75, 0] }, 0],
+    ["gerollt", { euler: [200, 60, -15] }, 0],
+    ["schräg", { euler: [333, 110, 30] }, 0],
+    ["quer", { qs: geraetQuer }, Math.PI / 2]
+  ];
+  for (const [name, lage, schirm] of faelle) {
+    const k = Au.kameraImRaum(pose, Au.blickAusLage(lage));
+    const q0 = Au.kameraQuaternion(pose.drehungRad, Au.geraetQuaternion(lage), schirm);
+    const q = Au.kameraAufStrahl(q0, k.d);
+    const vor = raumAchsen(Au.dreheVektor(q, [0, 0, -1])), d = einheit(k.d);
+    nah(`δ-Kamera ${name}: Blick x = Zielstrahl`, vor[0], d[0], 1e-9);
+    nah(`δ-Kamera ${name}: Blick y = Zielstrahl`, vor[1], d[1], 1e-9);
+    nah(`δ-Kamera ${name}: Blick Höhe = Zielstrahl`, vor[2], d[2], 1e-9);
+    nah(`δ-Kamera ${name}: Rollen bleibt`, rollen(q), rollen(q0), 1e-9);
+    nah(`δ-Kamera ${name}: Quaternion normiert`, Math.hypot(...q), 1, 1e-12);
+  }
+  // Ohne Neigungsfehler ändert sich nichts.
+  const pose0 = { ...pose, modell: Au.haltungFreihand(0) };
+  const lage0 = { euler: [200, 60, -15] };
+  const q00 = Au.kameraQuaternion(pose0.drehungRad, Au.geraetQuaternion(lage0), 0);
+  const q01 = Au.kameraAufStrahl(q00, Au.kameraImRaum(pose0, Au.blickAusLage(lage0)).d);
+  wahr("δ = 0: Kamera unverändert", q01.every((c, i) => Math.abs(c - q00[i]) < 1e-9), `${q01} / ${q00}`);
+  // Wandtreffer: Bildmitte (Vorschau, Antippen) = „Setzen" – vorher 6,7 cm daneben.
+  const psi = 0.4, th = 20 * Z.GRAD;
+  const l = lageFuer([Math.sin(psi) * Math.cos(th), Math.cos(psi) * Math.cos(th), -Math.sin(th)]);
+  const lage = { euler: [l.alpha, l.beta, l.gamma] };
+  const k = Au.kameraImRaum(pose, Au.blickAusLage(lage));
+  const q0 = Au.kameraQuaternion(pose.drehungRad, Au.geraetQuaternion(lage), 0);
+  const wand = q => Au.treffer({ ursprung: k.o, richtung: raumAchsen(Au.dreheVektor(q, [0, 0, -1])), ecken, deckeZ: 2.6 });
+  const setzen = Au.treffer({ ursprung: k.o, richtung: k.d, ecken, deckeZ: 2.6 });
+  const roh = wand(q0), neu = wand(Au.kameraAufStrahl(q0, k.d));
+  wahr("ohne Nachdrehen lag die Vorschau > 5 cm neben „Setzen\"", Math.abs(roh.hoehe - setzen.hoehe) > 0.05, `${roh.hoehe} / ${setzen.hoehe}`);
+  wahr("Vorschau trifft dieselbe Wand", neu.ok && neu.index === setzen.index);
+  nah("Vorschau-Höhe = Setzen-Höhe", neu.hoehe, setzen.hoehe, 1e-9);
+  nah("Vorschau-Abstand = Setzen-Abstand", neu.abstand, setzen.abstand, 1e-9);
+}
+
 // --------------------------------------------------------- Bildwinkel
 
 {
