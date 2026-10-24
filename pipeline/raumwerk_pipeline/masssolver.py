@@ -1,10 +1,17 @@
 """
-Maß-Solver – der metrische Maßstab aus den Laser-Ankern (Konzept §6.2, §7).
+Maß-Solver – der metrische Maßstab aus bekannten Längen (Konzept §6.2, §7).
 
 Die Foto-Rekonstruktion liefert die Struktur, aber in willkürlichen Einheiten.
-Die belastbaren Zahlen kommen aus den **Lasermaßen**: echte mm-Punkt-zu-Punkt-
-Werte, die als *harte Constraints* in eine Ausgleichsrechnung gehen und den
-Maßstab festlegen.
+Die belastbaren Zahlen kommen aus **bekannten Längen**: Lasermaße, ein mit dem
+Bandmaß genommenes Wandstück oder die Kamerahöhe über dem Boden. Jede davon
+ist ein Anker (Modellabstand, echte Länge); zusammen legen sie in einer
+Ausgleichsrechnung den Maßstab fest.
+
+**Ein einziges bekanntes Maß reicht für den Maßstab** – ein Referenzwürfel ist
+nicht nötig. Ab zwei Maßen wird eines als **Kontrollmaß** zurückgehalten und
+liefert die echte Genauigkeitszahl des Auftrags (§7). Mit nur einem Maß gibt es
+diese Zahl nicht; sie wird dann als `None` mit Begründung gemeldet, nie
+geschätzt.
 
 Bewusst reine Standardbibliothek, keine numpy-Abhängigkeit: Der Skalenfaktor
 folgt in geschlossener Form aus einer Ausgleichsrechnung durch den Ursprung,
@@ -104,6 +111,79 @@ def _rms_mm(skala: float, paare: list[tuple[float, float]]) -> float:
         return 0.0
     quadr = sum((skala * dm - dl) ** 2 for dm, dl in paare)
     return math.sqrt(quadr / len(paare)) * 1000.0
+
+
+@dataclass
+class Anker:
+    """Eine bekannte Länge mit ihrem Abstand im Modell."""
+
+    modell: float                   # Abstand in Modelleinheiten (aus der Rekonstruktion)
+    laenge_m: float                 # echte Länge in Metern (Laser, Bandmaß, Kamerahöhe)
+    quelle: str = "laser"           # laser | band | kamerahoehe | raumhoehe | …
+    bezeichnung: str = ""
+    kontrolle: bool = False         # ausdrücklich als Kontrollmaß vorgesehen
+
+
+@dataclass
+class Massstab:
+    """Maßstab samt Kontrollmaß – oder der ehrliche Hinweis, dass es keines gibt."""
+
+    skala: float
+    rms_mm: float | None            # None: mit nur einem verwendeten Anker nicht aussagekräftig
+    verwendet: list                 # Anker, die den Maßstab bestimmen
+    verworfen: list                 # Anker, die der robuste Schritt aussortiert hat
+    kontrolle: Anker | None
+    kontrollmass_abweichung_mm: float | None
+    hinweise: list = field(default_factory=list)
+
+
+HINWEIS_EIN_MASS = ("Nur ein bekanntes Maß – Maßstab ohne Kontrollmaß. Ein zweites Maß "
+                    "(Laser, Bandmaß oder Kamerahöhe) liefert die Genauigkeitszahl.")
+
+
+def massstab_bestimmen(anker: list[Anker], robust: bool = True) -> Massstab:
+    """
+    Maßstab aus beliebig vielen bekannten Längen – ab **einer**.
+
+    - 1 Anker: Maßstab = Länge / Modellabstand; kein Kontrollmaß (None + Hinweis).
+    - ≥ 2 Anker: der als ``kontrolle`` markierte (sonst der letzte) wird
+      zurückgehalten, die übrigen bestimmen den Maßstab; die Abweichung des
+      zurückgehaltenen ist die Genauigkeitszahl.
+    """
+    # Gleiche Schwelle wie in skala_aus_distanzen, damit dessen Indizes passen.
+    gueltig = [a for a in anker if a.modell > 1e-9 and a.laenge_m > 1e-9]
+    if not gueltig:
+        raise ValueError("Kein bekanntes Maß – mindestens eine bekannte Länge (Laser, "
+                         "Bandmaß oder Kamerahöhe) mit Modellabstand ist nötig.")
+    hinweise: list[str] = []
+    kontrolle = None
+    rechnen = gueltig
+    if len(gueltig) >= 2:
+        markiert = [a for a in gueltig if a.kontrolle]
+        kontrolle = markiert[0] if markiert else gueltig[-1]
+        rechnen = [a for a in gueltig if a is not kontrolle]
+    else:
+        hinweise.append(HINWEIS_EIN_MASS)
+
+    erg = skala_aus_distanzen([(a.modell, a.laenge_m) for a in rechnen], robust=robust)
+    verworfen = [rechnen[i] for i in erg.verworfen]
+    verwendet = [a for a in rechnen if not any(a is v for v in verworfen)]
+    if verworfen:
+        hinweise.append(f"{len(verworfen)} Maß(e) als Ausreißer verworfen: "
+                        + ", ".join(a.bezeichnung or a.quelle for a in verworfen) + ".")
+
+    abw = None
+    if kontrolle is not None:
+        abw = kontrollmass_abweichung_mm(erg.skala, kontrolle.modell, kontrolle.laenge_m)
+    return Massstab(
+        skala=erg.skala,
+        rms_mm=erg.rms_mm if len(verwendet) >= 2 else None,
+        verwendet=verwendet,
+        verworfen=verworfen,
+        kontrolle=kontrolle,
+        kontrollmass_abweichung_mm=abw,
+        hinweise=hinweise,
+    )
 
 
 def kontrollmass_abweichung_mm(skala: float, modell_distanz: float, laser_distanz_m: float) -> float:

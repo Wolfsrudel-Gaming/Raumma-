@@ -1,32 +1,67 @@
 """
 Die Stufen der Verarbeitung (Konzept §6.2).
 
-    Erfassung → [ SfM → Dichte Wolke → Maß-Solver → Komponenten → Semantik ] → Ergebnis
+    Erfassung → [ Raum → Eingabe → SfM → Dichte Wolke → Maß-Solver → Komponenten → Semantik ] → Ergebnis
 
-Jede Stufe ist eine Funktion mit gleicher Form. Ist das echte Werkzeug
-installiert, läuft es (die Kommandos stehen in `tools.py`); sonst weicht die
-Stufe in eine **Simulation** aus, damit die Pipeline in Entwicklung und CI
-end-to-end durchläuft und ein prüfbares Ergebnis liefert.
+Jede Stufe ist eine Funktion mit gleicher Form. Sind COLMAP und OpenMVS
+installiert, laufen sie (Kommandos in `tools.py`); sonst läuft die Pipeline im
+**Simulationsmodus** durch, damit Entwicklung und CI end-to-end prüfbar bleiben.
 
-Der **Maß-Solver** ist keine Simulation, sondern echt gerechnet – er ist der
-Kern der Genauigkeitsstrategie und braucht kein schweres Binary.
+Ehrlichkeitsregeln (die wichtigste Eigenschaft dieser Datei):
+
+- **Simulation ist überall gekennzeichnet.** Jede Ausgabe, die aus der
+  Simulation stammt, trägt `"simuliert": true` und den Hinweis
+  „Simulation – keine echte Messung"; die Demo-Wolke trägt es im PLY-Kopf.
+  Ein Kontrollmaß wird in der Simulation **nicht** als Genauigkeitszahl
+  gemeldet (`kontrollmass_abweichung_mm: null`) – es wurde nichts gemessen.
+- **Im echten Lauf wird kein Modellabstand erfunden.** Die Modellabstände der
+  bekannten Längen kommen aus der Rekonstruktion (`modell.py`: Koordinaten,
+  Punkt-IDs, Bildpunkte, Kamerahöhe über Bodenpunkten). Fehlen sie, scheitert
+  der Auftrag mit Klartext – statt eine Genauigkeit vorzutäuschen.
+- **Ein bekanntes Maß reicht** für den Maßstab – kein Referenzwürfel nötig.
+  Ab zwei Maßen gibt es zusätzlich ein Kontrollmaß.
+- **Geometrie wird nie erfunden.** Ein `raum`-Vorschlag entsteht nur aus
+  eingegebenen Wandlängen und Drehungen (Polygonzug wie im Browser).
+
+Eingabe eines Auftrags (alles optional außer mindestens einer bekannten Länge):
+
+    laser:            [{von, bis, distanzM, modell_a?, modell_b?, kontrolle?}]
+    bekannte_laengen: [{art, laenge, drehung?, modell_a?, modell_b?,
+                        boden?, bild?, kontrolle?, bezeichnung?}]
+                      art: "wand" (Teil des Polygonzugs, mit drehung),
+                           "strecke" (beliebige gemessene Strecke),
+                           "kamerahoehe" (Kamera über Boden),
+                           "raumhoehe" (Boden bis Decke)
+    tags:             [{art, notiz?}]
 """
 
 from __future__ import annotations
 
 import json
+import math
 import random
 from pathlib import Path
 
-from . import tools
+from . import geometrie, modell, ply, tools
 from .config import Config
 from .jobs import Job
-from .masssolver import kontrollmass_abweichung_mm, skala_aus_distanzen
+from .masssolver import Anker, HINWEIS_EIN_MASS, massstab_bestimmen
 
-# Verborgener „wahrer" Maßstab für die Simulation: die Rekonstruktion käme in
-# willkürlichen Einheiten heraus, die Lasermaße stellen sie auf Meter. Der
-# Solver soll ihn aus den Ankern zurückgewinnen.
+# Verborgener „wahrer" Maßstab der Simulation: die Rekonstruktion käme in
+# willkürlichen Einheiten heraus. Wird NUR im Simulationsmodus benutzt.
 _SIM_SKALA = 0.37
+
+SIM_HINWEIS = "Simulation – keine echte Messung"
+
+KEIN_MASS = ("Kein bekanntes Maß – für den Maßstab genügt eine einzige bekannte Länge "
+             "(Lasermaß, Bandmaß einer Wand oder Kamerahöhe über dem Boden). "
+             "Ein Referenzwürfel ist nicht nötig.")
+
+MODELL_FEHLT = ("Modellabstände fehlen – Laser-Constraints brauchen Modellpunkte "
+                "(modell_a/modell_b als [x,y,z], Punkt-ID oder Bildpunkt {bild, px}; "
+                "Kamerahöhe mit Bodenpunkten).")
+
+_ARTEN = ("wand", "strecke", "kamerahoehe", "raumhoehe")
 
 
 def simuliert(cfg: Config) -> bool:
@@ -35,78 +70,338 @@ def simuliert(cfg: Config) -> bool:
     return not tools.alle_vorhanden()
 
 
-# ------------------------------------------------------------ Stufe 1: SfM
+def _sim(ctx: dict, cfg: Config) -> bool:
+    if "simuliert" not in ctx:
+        ctx["simuliert"] = simuliert(cfg)
+    return ctx["simuliert"]
+
+
+def _hinweis(ctx: dict, text: str) -> None:
+    ctx.setdefault("hinweise", []).append(text)
+
+
+def _json(pfad: Path, obj) -> None:
+    pfad.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+# ------------------------------------------------------ Eingabe lesen
+
+def _zahl(v) -> float | None:
+    if isinstance(v, bool):
+        return None
+    try:
+        z = float(v)
+    except (TypeError, ValueError):
+        return None
+    return z if math.isfinite(z) else None
+
+
+def _art(eintrag: dict) -> str:
+    art = str(eintrag.get("art") or "").lower()
+    if art in _ARTEN:
+        return art
+    return "wand" if "drehung" in eintrag else "strecke"
+
+
+def _laenge(eintrag: dict) -> float | None:
+    for k in ("laenge", "laengeM", "hoeheM", "distanzM"):
+        if k in eintrag:
+            return _zahl(eintrag[k])
+    return None
+
+
+def kandidaten(eingabe: dict) -> tuple[list[dict], list[str]]:
+    """
+    Alle bekannten Längen, die einen Maßstab tragen können: Lasermaße und
+    `bekannte_laengen`. Ungültige Einträge werden mit Hinweis übersprungen.
+    """
+    liste: list[dict] = []
+    hinweise: list[str] = []
+    for i, m in enumerate(eingabe.get("laser") or []):
+        if not isinstance(m, dict):
+            hinweise.append(f"Lasermaß {i + 1} ist kein Objekt – übersprungen.")
+            continue
+        d = _zahl(m.get("distanzM"))
+        if d is None or d <= 0:
+            hinweise.append(f"Lasermaß {i + 1} ohne gültige Länge – übersprungen.")
+            continue
+        von, bis = m.get("von"), m.get("bis")
+        name = f"{von}–{bis}" if (von or bis) else f"Laser {i + 1}"
+        liste.append({"quelle": "laser", "bezeichnung": name, "laenge_m": d,
+                      "eintrag": m, "kontrolle": bool(m.get("kontrolle"))})
+    zaehler: dict[str, int] = {}
+    for j, b in enumerate(eingabe.get("bekannte_laengen") or []):
+        if not isinstance(b, dict):
+            hinweise.append(f"Bekannte Länge {j + 1} ist kein Objekt – übersprungen.")
+            continue
+        art = _art(b)
+        zaehler[art] = zaehler.get(art, 0) + 1
+        name = str(b.get("bezeichnung") or {
+            "wand": f"Wand {zaehler[art]}", "strecke": f"Strecke {zaehler[art]}",
+            "kamerahoehe": "Kamerahöhe", "raumhoehe": "Raumhöhe"}[art])
+        d = _laenge(b)
+        if d is None or d <= 0:
+            hinweise.append(f"{name} ohne gültige Länge – übersprungen.")
+            continue
+        liste.append({"quelle": art, "bezeichnung": name, "laenge_m": d,
+                      "eintrag": {**b, "art": art}, "kontrolle": bool(b.get("kontrolle"))})
+    return liste, hinweise
+
+
+def _bilder(jobdir: Path) -> int:
+    d = jobdir / "bilder"
+    return sum(1 for p in d.iterdir() if p.is_file()) if d.exists() else 0
+
+
+# ------------------------------------------- Stufe 0: Raum (Polygonzug)
+
+def raum_aus_eingabe(eingabe: dict) -> tuple[dict | None, str | None]:
+    """
+    Raumvorschlag aus einem Bandmaß-Zug: die `bekannte_laengen` der Art „wand"
+    mit `laenge` und `drehung`, in Reihenfolge. Gibt (raum, None) oder
+    (None, Grund) zurück – erfunden wird nichts.
+    """
+    eintraege = [b for b in (eingabe.get("bekannte_laengen") or []) if isinstance(b, dict)]
+    waende = [b for b in eintraege if _art(b) == "wand"]
+    if not any("drehung" in w for w in waende):
+        return None, ("Kein Raumvorschlag: dafür die Wände als bekannte_laengen mit "
+                      "laenge und drehung (Polygonzug) angeben.")
+    zug_waende = []
+    for i, w in enumerate(waende):
+        laenge, drehung = _laenge(w), _zahl(w.get("drehung"))
+        if laenge is None or laenge <= 0 or drehung is None:
+            return None, (f"Kein Raumvorschlag: Wand {i + 1} braucht eine Länge > 0 und eine "
+                          "Drehung in Grad – der Polygonzug wird nicht geraten.")
+        zug_waende.append({"laenge": laenge, "drehung": drehung, "eintrag": w})
+    if len(zug_waende) < 3:
+        return None, "Kein Raumvorschlag: mindestens drei Wände mit Länge und Drehung nötig."
+
+    z = geometrie.zug(zug_waende)
+    punkte = z["punkte"]
+    herkunft = []
+    for w in zug_waende:
+        q = w["eintrag"].get("quelle")
+        q = q if q in ("band", "gezielt", "getippt") else "band"
+        sigma = _zahl(w["eintrag"].get("sigmaM"))
+        herkunft.append({"laenge": round(w["laenge"], 3), "quelle": q,
+                         "sigmaM": sigma if sigma is not None else (0.005 if q == "band" else None)})
+    hinweise = geometrie.pruefen(punkte)
+    if z["schlusswandErgaenzt"]:
+        # Die letzte Ecke bleibt stehen, die Wand zurück zum Start ist gerechnet.
+        herkunft.append({"laenge": round(z["restluecke"], 3), "quelle": "getippt", "sigmaM": None})
+        hinweise.insert(0, f"Zug schließt nicht (Restlücke {round(z['restluecke'] * 100)} cm) – "
+                           "Schlusswand rechnerisch ergänzt, nicht gemessen. Nachmessen!")
+    hoehen = [_laenge(b) for b in eintraege if _art(b) == "raumhoehe"]
+    hoehe = next((h for h in hoehen if h is not None and h > 0), None)
+
+    raum = {
+        "quelle": "bekannte_laengen",
+        "simuliert": False,
+        "hinweis": ("Aus den eingegebenen Wandlängen und Drehungen gerechnet (Polygonzug wie im "
+                    "Aufmaß-Assistenten) – unabhängig von der Rekonstruktion."),
+        "methode": "band",
+        "umriss": geometrie.umriss_schreiben(punkte),
+        "breiteM": max(p[0] for p in punkte),
+        "tiefeM": max(p[1] for p in punkte),
+        "hoeheM": round(hoehe, 3) if hoehe else None,
+        "flaecheM2": round(geometrie.flaeche_punkte(punkte), 2),
+        "waende": herkunft,
+        "restlueckeM": round(z["restluecke"], 4),
+        "geschlossen": z["geschlossen"],
+        "schlusswandErgaenzt": z["schlusswandErgaenzt"],
+        "oeffnungen": [],
+        "einbauten": [],
+        "aufnahme": None,
+        "hinweise": hinweise,
+    }
+    return raum, None
+
+
+def stage_raum(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
+    """Raumvorschlag aus eingegebenen Wandlängen – nur wenn es sie gibt."""
+    raum, grund = raum_aus_eingabe(job.eingabe)
+    if raum is None:
+        _hinweis(ctx, grund)
+        return {}
+    _json(jobdir / "raum.json", raum)
+    return {"raum": raum}
+
+
+# ---------------------------------------------- Stufe 1: Eingabe prüfen
+
+def stage_eingabe(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
+    """
+    Vor der schweren Rechnung prüfen, ob ein Maßstab überhaupt möglich ist –
+    damit COLMAP nicht eine Stunde rechnet, um dann am Maßstab zu scheitern.
+    """
+    kand, hinweise = kandidaten(job.eingabe)
+    for h in hinweise:
+        _hinweis(ctx, h)
+    if not kand:
+        raise RuntimeError(KEIN_MASS)
+    n_bilder = _bilder(jobdir)
+    mit_bezug = [k for k in kand if modell.hat_modellbezug(k["eintrag"])]
+    if not _sim(ctx, cfg):
+        if not mit_bezug:
+            raise RuntimeError(MODELL_FEHLT)
+        if n_bilder < 3:
+            raise RuntimeError(f"Zu wenige Bilder für die Rekonstruktion: {n_bilder} "
+                               "(mindestens 3, besser 20+ mit viel Überlappung).")
+    ctx["kandidaten"] = kand
+    return {"eingabe": {"bekannte_laengen": len(kand), "mit_modellpunkten": len(mit_bezug),
+                        "bilder": n_bilder}}
+
+
+# ------------------------------------------------------------ Stufe 2: SfM
 
 def stage_sfm(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     """Kameraposen und spärliche Wolke. Real: COLMAP im CPU-Modus."""
-    sparse = jobdir / "sparse"
+    jd = jobdir.resolve()           # Werkzeuge laufen mit cwd=jobdir – Pfade absolut
+    sparse = jd / "sparse"
     sparse.mkdir(exist_ok=True)
-    bilder_dir = jobdir / "bilder"
-    n_bilder = sum(1 for p in bilder_dir.iterdir() if p.is_file()) if bilder_dir.exists() else 0
-    if not simuliert(cfg):
-        for kmd in tools.colmap_kommandos(str(jobdir / "bilder"), str(jobdir)):
-            lauf = tools.ausfuehren(kmd, cfg, cwd=str(jobdir))
-            if lauf.rueckgabe != 0:
-                raise RuntimeError(f"COLMAP scheiterte: {' '.join(kmd[:2])}")
-        # Aus der echten Rekonstruktion würden hier die Modell-Distanzen an den
-        # Laser-Ankerpunkten ausgelesen. (Auslesen aus sparse/ – projektspezifisch.)
-        ctx["anker"] = _anker_aus_laser(job, rauschen=0.0)
-    else:
-        (sparse / "cameras.json").write_text(
-            json.dumps({"kameras": 24, "hinweis": "Simulation – keine echte SfM"}),
-            encoding="utf-8")
-        ctx["anker"] = _anker_aus_laser(job, rauschen=0.006, seed=job.id)
-    return {"sfm": {"kameras": 24, "bilder": n_bilder}}
+    n_bilder = _bilder(jd)
+    if _sim(ctx, cfg):
+        _json(sparse / "cameras.json", {"simuliert": True, "hinweis": "Simulation – keine echte SfM"})
+        return {"sfm": {"bilder": n_bilder, "kameras": None, "punkte": None,
+                        "simuliert": True, "hinweis": "Simulation – keine echte SfM"}}
+
+    for kmd in tools.colmap_kommandos(str(jd / "bilder"), str(jd)):
+        _laufen(kmd, cfg, jd, "COLMAP")
+    mdir = modell.finden(sparse)
+    if mdir is None:
+        raise RuntimeError("COLMAP hat keine Rekonstruktion erzeugt (sparse/0 fehlt) – "
+                           "zu wenige, zu ähnliche oder unscharfe Bilder?")
+    m = modell.laden(mdir)
+    ctx["modell"] = m
+    return {"sfm": {"bilder": n_bilder, "kameras": len(m.bilder), "punkte": len(m.punkte),
+                    "modell": str(mdir.relative_to(jd)), "simuliert": False}}
 
 
-# -------------------------------------------------- Stufe 2: Dichte Wolke
+# -------------------------------------------------- Stufe 3: Dichte Wolke
 
 def stage_dichte(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
-    """Farbige dichte Punktwolke. Real: OpenMVS (CPU)."""
-    ziel = jobdir / "wolke.ply"
-    if not simuliert(cfg):
-        for kmd in tools.openmvs_kommandos(str(jobdir)):
-            lauf = tools.ausfuehren(kmd, cfg, cwd=str(jobdir))
-            if lauf.rueckgabe != 0:
-                raise RuntimeError("OpenMVS scheiterte")
-    else:
-        _demo_wolke_schreiben(ziel)
-    return {"wolke": {"datei": ziel.name, "punkte": _punktzahl(ziel)}}
+    """Farbige dichte Punktwolke. Real: COLMAP-Entzerrung + OpenMVS (CPU)."""
+    jd = jobdir.resolve()
+    ziel = jd / "wolke.ply"
+    if _sim(ctx, cfg):
+        n = _demo_wolke_schreiben(ziel)
+        return {"wolke": {"datei": ziel.name, "punkte": n, "einheit": "modell",
+                          "simuliert": True,
+                          "hinweis": "Simulation – Demo-Wolke (Quadrat), keine echte Rekonstruktion"}}
+
+    for kmd in tools.dichte_kommandos(str(jd / "bilder"), str(jd)):
+        _laufen(kmd, cfg, jd, "OpenMVS" if kmd[0] != "colmap" else "COLMAP-Entzerrung")
+    quelle = jd / tools.DICHTE_PLY
+    if not quelle.exists():
+        raise RuntimeError(f"OpenMVS hat keine dichte Wolke geschrieben ({tools.DICHTE_PLY} fehlt).")
+    info = ply.zu_ascii(quelle, ziel, max_punkte=cfg.max_wolke_punkte, kommentare=[
+        "RAUMWERK dichte Wolke (OpenMVS), Modelleinheiten; Massstab in result.json"])
+    return {"wolke": {"datei": ziel.name, "punkte": info["punkte"],
+                      "punkte_original": info["punkte_original"],
+                      "ausgeduennt": info["ausgeduennt"], "einheit": "modell",
+                      "simuliert": False}}
 
 
-# --------------------------------------------------- Stufe 3: Maß-Solver
+# --------------------------------------------------- Stufe 4: Maß-Solver
 
 def stage_mass(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     """
-    Metrischer Maßstab aus den Laser-Ankern – echt gerechnet. Ein Anker wird
-    als Kontrollmaß zurückgehalten (fließt nicht in die Rechnung ein) und
-    liefert die reale Genauigkeitszahl je Auftrag (§7).
+    Metrischer Maßstab aus bekannten Längen. Ab einem Maß; ab zwei Maßen wird
+    eines als Kontrollmaß zurückgehalten und liefert die Genauigkeitszahl (§7).
     """
-    anker = ctx.get("anker", [])
-    if len(anker) < 2:
-        raise RuntimeError("Zu wenige Laser-Anker für den Maßstab (mindestens 2).")
+    sim = _sim(ctx, cfg)
+    kand = ctx.get("kandidaten")
+    if kand is None:
+        kand, _ = kandidaten(job.eingabe)
+    anker = _sim_anker(kand, seed=job.id) if sim else _echte_anker(kand, ctx)
 
-    kontrolle = anker[-1] if len(anker) >= 4 else None
-    verwendet = anker[:-1] if kontrolle else anker
+    try:
+        m = massstab_bestimmen(anker)
+    except ValueError as e:
+        raise RuntimeError(str(e)) from e
 
-    erg = skala_aus_distanzen(verwendet)
+    def zeile(a: Anker, rolle: str) -> dict:
+        return {"bezeichnung": a.bezeichnung, "quelle": a.quelle, "laenge_m": a.laenge_m,
+                "modell_abstand": round(a.modell, 6), "rolle": rolle}
+
     ausgabe = {
-        "skala_m_je_einheit": round(erg.skala, 6),
-        "rms_mm": round(erg.rms_mm, 1),
-        "anker_verwendet": erg.n_verwendet,
-        "anker_verworfen": erg.n_verworfen,
+        "skala_m_je_einheit": round(m.skala, 6),
+        "rms_mm": round(m.rms_mm, 1) if m.rms_mm is not None else None,
+        "anker_verwendet": len(m.verwendet),
+        "anker_verworfen": len(m.verworfen),
+        "anker": ([zeile(a, "massstab") for a in m.verwendet]
+                  + [zeile(a, "verworfen") for a in m.verworfen]
+                  + ([zeile(m.kontrolle, "kontrolle")] if m.kontrolle else [])),
+        "kontrollmass_abweichung_mm": None,
+        "kontrollmass": None,
+        "kontrollmass_hinweis": None,
+        "simuliert": sim,
+        "hinweis": SIM_HINWEIS if sim else (
+            f"Maßstab aus {len(m.verwendet)} bekannten Länge(n); Modellabstände aus der "
+            "Rekonstruktion gelesen."),
+        "hinweise": list(m.hinweise),
     }
-    if kontrolle:
-        abw = kontrollmass_abweichung_mm(erg.skala, kontrolle[0], kontrolle[1])
-        ausgabe["kontrollmass_abweichung_mm"] = round(abw, 1)
+    if m.kontrolle is not None:
+        ausgabe["kontrollmass"] = {
+            "bezeichnung": m.kontrolle.bezeichnung, "quelle": m.kontrolle.quelle,
+            "laenge_m": m.kontrolle.laenge_m,
+            "modell_m": round(m.skala * m.kontrolle.modell, 4),
+        }
+        abw = round(m.kontrollmass_abweichung_mm, 1)
+        if sim:
+            # Kein gemessenes Kontrollmaß – der Demo-Wert steht separat, damit
+            # niemand ihn für eine Genauigkeitsaussage hält.
+            ausgabe["kontrollmass_abweichung_mm_simuliert"] = abw
+            ausgabe["kontrollmass_hinweis"] = (
+                "Simulation – kein gemessenes Kontrollmaß (Demo-Wert unter "
+                "kontrollmass_abweichung_mm_simuliert).")
+        else:
+            ausgabe["kontrollmass_abweichung_mm"] = abw
+    else:
+        ausgabe["kontrollmass_hinweis"] = HINWEIS_EIN_MASS
+    for h in m.hinweise:
+        _hinweis(ctx, h)
 
-    (jobdir / "massstab.json").write_text(
-        json.dumps(ausgabe, indent=2, ensure_ascii=False), encoding="utf-8")
-    ctx["skala"] = erg.skala
+    _json(jobdir / "massstab.json", ausgabe)
+    ctx["skala"] = m.skala
     return {"massstab": ausgabe}
 
 
-# ------------------------------------------- Stufe 4: Komponenten-Zuordnung
+def _sim_anker(kand: list[dict], seed: str) -> list[Anker]:
+    """
+    NUR Simulation: Modellabstände aus den bekannten Längen geteilt durch den
+    verborgenen Maßstab, plus etwas Rauschen – als ob sie aus einer
+    Rekonstruktion kämen. Das Ergebnis ist entsprechend als simuliert markiert.
+    """
+    rng = random.Random(seed)
+    return [Anker(modell=(k["laenge_m"] / _SIM_SKALA) * (1.0 + rng.uniform(-0.006, 0.006)),
+                  laenge_m=k["laenge_m"], quelle=k["quelle"], bezeichnung=k["bezeichnung"],
+                  kontrolle=k["kontrolle"])
+            for k in kand]
+
+
+def _echte_anker(kand: list[dict], ctx: dict) -> list[Anker]:
+    """Modellabstände aus der Rekonstruktion lesen – nie schätzen."""
+    m = ctx.get("modell")
+    anker, gruende = [], []
+    for k in kand:
+        if not modell.hat_modellbezug(k["eintrag"]):
+            _hinweis(ctx, f"{k['bezeichnung']}: keine Modellpunkte – fließt nicht in den Maßstab ein.")
+            continue
+        try:
+            d = modell.modell_abstand(k["eintrag"], m)
+        except modell.ModellFehler as e:
+            gruende.append(f"{k['bezeichnung']}: {e}")
+            _hinweis(ctx, f"{k['bezeichnung']}: {e}")
+            continue
+        anker.append(Anker(modell=d, laenge_m=k["laenge_m"], quelle=k["quelle"],
+                           bezeichnung=k["bezeichnung"], kontrolle=k["kontrolle"]))
+    if not anker:
+        raise RuntimeError(MODELL_FEHLT + (" " + "; ".join(gruende) if gruende else ""))
+    return anker
+
+
+# ------------------------------------------- Stufe 5: Komponenten-Zuordnung
 
 # Kleiner Katalog echter Maße – die serverseitige Entsprechung der Komponenten-
 # DB. Außendurchmesser in Millimetern.
@@ -120,21 +415,20 @@ _KATALOG = {
 def stage_komponenten(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     """Getaggte Objekte auf echte Katalogmaße abbilden (DB-Lookup, §6.2)."""
     zuordnung = []
-    for tag in job.eingabe.get("tags", []):
-        schluessel = tag.get("art")
+    for tag in job.eingabe.get("tags") or []:
+        schluessel = tag.get("art") if isinstance(tag, dict) else tag
         katalog = _KATALOG.get(schluessel)
         zuordnung.append({
             "tag": schluessel,
             "gefunden": katalog is not None,
             "masse": katalog or {},
         })
-    (jobdir / "komponenten.json").write_text(
-        json.dumps(zuordnung, indent=2, ensure_ascii=False), encoding="utf-8")
+    _json(jobdir / "komponenten.json", zuordnung)
     return {"komponenten": {"zugeordnet": sum(1 for z in zuordnung if z["gefunden"]),
                             "gesamt": len(zuordnung)}}
 
 
-# ------------------------------------------------ Stufe 5: Elektro-Semantik
+# ------------------------------------------------ Stufe 6: Elektro-Semantik
 
 def stage_semantik(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     """
@@ -142,15 +436,17 @@ def stage_semantik(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     (Konzept §6.2, §9 Stufe 1), später ML-gestützt.
     """
     befunde = []
-    for tag in job.eingabe.get("tags", []):
-        if tag.get("art") == "ZAEHLERSCHRANK":
+    for tag in job.eingabe.get("tags") or []:
+        art = tag.get("art") if isinstance(tag, dict) else tag
+        if art == "ZAEHLERSCHRANK":
             befunde.append("Verteilung erkannt – Bedienbereich davor prüfen (VDE 0100-729).")
-    (jobdir / "semantik.json").write_text(
-        json.dumps({"befunde": befunde}, ensure_ascii=False), encoding="utf-8")
+    _json(jobdir / "semantik.json", {"befunde": befunde})
     return {"semantik": {"befunde": len(befunde)}}
 
 
 STUFEN = [
+    ("Raum aus bekannten Längen", stage_raum),
+    ("Eingabe prüfen", stage_eingabe),
     ("SfM (Kameraposen)", stage_sfm),
     ("Dichte Wolke", stage_dichte),
     ("Maß-Solver", stage_mass),
@@ -161,43 +457,25 @@ STUFEN = [
 
 # ------------------------------------------------------------ Hilfsmittel
 
-def _anker_aus_laser(job: Job, rauschen: float = 0.0, seed: str | None = None):
-    """
-    Modell-/Laser-Ankerpaare bilden. In der Simulation entstehen die Modell-
-    Distanzen aus den Lasermaßen geteilt durch den verborgenen Maßstab, plus
-    etwas Rauschen – so, wie sie aus einer realen Rekonstruktion kämen.
-    """
-    rng = random.Random(seed)
-    anker = []
-    for m in job.eingabe.get("laser", []):
-        d_laser = float(m.get("distanzM", 0))
-        if d_laser <= 0:
-            continue
-        stoerung = 1.0 + rng.uniform(-rauschen, rauschen)
-        d_modell = (d_laser / _SIM_SKALA) * stoerung
-        anker.append((d_modell, d_laser))
-    return anker
+def _laufen(kmd: list[str], cfg: Config, jd: Path, wer: str) -> None:
+    """Ein Werkzeug gedrosselt starten; Ausgabe nach werkzeuge.log, Fehler im Klartext."""
+    lauf = tools.ausfuehren(kmd, cfg, cwd=str(jd))
+    with (jd / "werkzeuge.log").open("a", encoding="utf-8") as log:
+        log.write(f"$ {' '.join(lauf.kommando)}\n{lauf.ausgabe}\n[Rückgabe {lauf.rueckgabe}]\n\n")
+    if lauf.rueckgabe != 0:
+        letzte = (lauf.ausgabe.strip().splitlines() or [""])[-1][:200]
+        raise RuntimeError(f"{wer} scheiterte bei „{' '.join(kmd[:2])}“ (Rückgabe "
+                           f"{lauf.rueckgabe}): {letzte} – Details in werkzeuge.log")
 
 
-def _demo_wolke_schreiben(ziel: Path, kante: float = 4.0):
-    """Eine winzige Demo-Punktwolke als ASCII-PLY (steht für die dichte Wolke)."""
+def _demo_wolke_schreiben(ziel: Path, kante: float = 4.0) -> int:
+    """NUR Simulation: eine winzige Demo-Punktwolke (Quadrat) als ASCII-PLY."""
     punkte = []
     n = 8
     for i in range(n + 1):
         t = kante * i / n
         punkte += [(t, 0, 0), (t, kante, 0), (0, t, 0), (kante, t, 0)]
-    kopf = [
-        "ply", "format ascii 1.0", f"element vertex {len(punkte)}",
-        "property float x", "property float y", "property float z", "end_header",
-    ]
-    zeilen = kopf + [f"{x} {y} {z}" for x, y, z in punkte]
-    ziel.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
-
-
-def _punktzahl(ply: Path) -> int:
-    if not ply.exists():
-        return 0
-    for zeile in ply.read_text(encoding="utf-8").splitlines():
-        if zeile.startswith("element vertex"):
-            return int(zeile.split()[-1])
-    return 0
+    return ply.ascii_schreiben(ziel, punkte, kommentare=[
+        "RAUMWERK Simulation - Demo-Wolke, keine echte Rekonstruktion",
+        "simuliert: true",
+    ])

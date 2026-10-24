@@ -2,11 +2,16 @@
 #
 # Bewusst schlank: Basis Debian + Python-Standardbibliothek, keine
 # Fremdpakete. COLMAP/OpenMVS sind hier NICHT installiert (sie sind schwer und
-# teils selbst zu bauen) – die Pipeline läuft dann im Simulationsmodus. Zum
-# Scharfschalten die Werkzeuge ergänzen, z. B.:
+# teils selbst zu bauen) – die Pipeline läuft dann im Simulationsmodus und
+# kennzeichnet jede Zahl daraus als „simuliert". Zum Scharfschalten die
+# Werkzeuge ergänzen; gebraucht werden `colmap`, `InterfaceCOLMAP` und
+# `DensifyPointCloud` (CloudCompare nicht), z. B.:
 #
 #     RUN apt-get update && apt-get install -y colmap
 #     # OpenMVS nach Projekt-Anleitung bauen und ins PATH legen
+#
+# Der echte Pfad ist nicht im CI getestet – ein erster Lauf auf dem Server
+# ist der Abnahmetest (siehe README).
 #
 # util-linux bringt `ionice`, `nice` steckt in coreutils (im Basis-Image).
 FROM debian:12-slim
@@ -25,7 +30,8 @@ ENV RAUMWERK_DATEN=/daten \
     RAUMWERK_MAX_CPUS=2 \
     RAUMWERK_MAX_RAM_MB=4096 \
     RAUMWERK_NICE=15 \
-    RAUMWERK_IONICE=3
+    RAUMWERK_IONICE=3 \
+    RAUMWERK_MAX_WOLKE_PUNKTE=300000
 
 RUN mkdir -p /daten && chown raumwerk:raumwerk /daten
 VOLUME ["/daten"]

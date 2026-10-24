@@ -17,6 +17,7 @@ services:
       RAUMWERK_MAX_RAM_MB: "4096"
       RAUMWERK_NICE: "15"       # niedrige CPU-Priorität
       RAUMWERK_IONICE: "3"      # I/O nur, wenn die Platte frei ist
+      RAUMWERK_MAX_WOLKE_PUNKTE: "300000"  # Browser-Wolke darüber ausdünnen
       # RAUMWERK_NACHT: "22,6"  # optional: nur zwischen 22 und 6 Uhr rechnen
     # Harte Grenzen (cgroups): mehr als das kann der Container nie nehmen.
     cpus: "2.0"

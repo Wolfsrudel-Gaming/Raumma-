@@ -48,6 +48,11 @@ class Config:
     # Nur ein Worker – schwere Jobs laufen nacheinander, nie parallel.
     worker: int = 1
 
+    # Höchstzahl Punkte in der ASCII-`wolke.ply` für den Browser-Betrachter.
+    # OpenMVS liefert leicht Millionen Punkte; darüber wird gleichmäßig
+    # ausgedünnt (die volle Wolke bleibt als `szene_dense.ply` liegen).
+    max_wolke_punkte: int = _int("RAUMWERK_MAX_WOLKE_PUNKTE", 300_000)
+
     # Zeitfenster „bevorzugt nachts": (start_stunde, end_stunde) in lokaler Zeit,
     # aus RAUMWERK_NACHT="22,6". Außerhalb wartet der Worker. None = jederzeit.
     nacht_fenster: tuple[int, int] | None = _nacht_aus_env()

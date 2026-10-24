@@ -5,7 +5,15 @@
     { "von": "Ecke B", "bis": "Ecke C", "distanzM": 3.00 },
     { "von": "Ecke C", "bis": "Ecke D", "distanzM": 2.50 },
     { "von": "Ecke A", "bis": "Ecke D", "distanzM": 5.15 },
-    { "von": "Ecke A", "bis": "Ecke C", "distanzM": 5.16 }
+    { "von": "Ecke A", "bis": "Ecke C", "distanzM": 5.16, "kontrolle": true }
+  ],
+  "bekannte_laengen": [
+    { "art": "wand", "laenge": 4.20, "drehung": 90 },
+    { "art": "wand", "laenge": 3.00, "drehung": 90 },
+    { "art": "wand", "laenge": 4.20, "drehung": 90 },
+    { "art": "wand", "laenge": 3.00, "drehung": 90 },
+    { "art": "raumhoehe", "laenge": 2.50 },
+    { "art": "kamerahoehe", "laenge": 1.45 }
   ],
   "tags": [
     { "art": "ZAEHLERSCHRANK", "notiz": "linke Wand" },

@@ -5,18 +5,25 @@ Schwere Jobs laufen nacheinander, nie parallel – so kann die Pipeline die
 anderen Dienste auf dem geteilten Server nicht aushungern. Der Worker läuft mit
 niedriger Priorität (`os.nice`) und wartet, wenn ein Nacht-Fenster gesetzt ist,
 bis es soweit ist (§11: „laufen bevorzugt nachts").
+
+Neustart-fest: Beim Start werden wartende Aufträge eingereiht; ein Auftrag, der
+beim Beenden mitten im Lauf war (`laeuft`), wird von vorn gerechnet. Aufträge
+im Zustand `angelegt` (auto:false, Bilder kommen noch) bleiben liegen, bis
+`POST /jobs/<id>/start` sie freigibt.
 """
 
 from __future__ import annotations
 
 import os
 import queue
+import sys
 import threading
 import time
+import traceback
 from datetime import datetime
 
 from .config import Config
-from .jobs import WARTET, JobStore
+from .jobs import LAEUFT, WARTET, JobStore
 from .pipeline import run_job
 
 
@@ -29,9 +36,14 @@ class Worker:
         self._stop = threading.Event()
 
     def start(self) -> "Worker":
-        # Beim Start alle wartenden Jobs einreihen (Neustart-fest).
-        for job in reversed(self.store.wartende()):
-            self._queue.put(job.id)
+        # Beim Start alle wartenden Jobs einreihen (Neustart-fest). Ein beim
+        # Beenden unterbrochener Lauf beginnt von vorn – sonst hinge er ewig
+        # auf „laeuft" fest.
+        for job in reversed(self.store.alle()):
+            if job.status == LAEUFT:
+                self.store.zuruecksetzen(job)
+            if job.status == WARTET:
+                self._queue.put(job.id)
         self._thread = threading.Thread(target=self._schleife, name="raumwerk-worker", daemon=True)
         self._thread.start()
         return self
@@ -68,9 +80,17 @@ class Worker:
                 break
             try:
                 self._warte_auf_fenster()
-                job = self.store.laden(job_id)
-                if job and job.status == WARTET:
-                    run_job(job, self.store, self.cfg)
+                # Prüfen und auf „laeuft" setzen unter derselben Sperre wie
+                # POST /start – sonst könnte ein Neustart einen Lauf überholen.
+                with self.store.sperre:
+                    job = self.store.laden(job_id)
+                    if not job or job.status != WARTET:
+                        continue
+                    job.status = LAEUFT
+                    self.store.speichern(job)
+                run_job(job, self.store, self.cfg)
+            except Exception:  # noqa: BLE001 – ein kaputter Auftrag darf den Worker nicht beenden
+                traceback.print_exc(file=sys.stderr)
             finally:
                 self._queue.task_done()
 
