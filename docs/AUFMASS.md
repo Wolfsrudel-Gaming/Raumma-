@@ -62,14 +62,15 @@ a = r + L·sinθ'        z = h + L·cosθ'        θ' = θ − δ
 - eine **bekannte Tür-/Fensterhöhe** (Norm-Innentür lichte Höhe ≈ 1,97 m) –
   genau die Größe, die die App an der Öffnung als Höhe anzeigt: bei Türen und
   Durchgängen die lichte Höhe ab Fertigfußboden (auch wenn auf den Rohboden
-  gezielt wurde), beim Fenster mit Brüstung Oberkante − Unterkante
-  (Aufnahmen bis `version: 2` meinten noch die Oberkante über dem gezielten
-  Boden und werden so weitergerechnet),
-- „der Raum ist **rechtwinklig**“ (weich, ± 1° je Ecke),
+  gezielt wurde), beim Fenster mit Brüstung Oberkante − Unterkante,
+- „der Raum ist **rechtwinklig**“ (weich, ± 1° je Ecke – nur für Ecken, die
+  auch geglättet werden, also unter 8° Abweichung; eine schräge 80°-Wand
+  zieht sonst Kamerahöhe und Neigung schief),
 - Vorwissen über die Haltung (Freihand: r = 0,30 ± 0,10 m; Stativ: r = 0).
 
 Die Gier-Drift ω kommt aus dem **Kontrollschuss**: nach den Ecken noch einmal
-auf Ecke 1 zielen. Der Neigungsfehler δ lässt sich **einmal je Gerät**
+auf Ecke 1 zielen. Fehlt er, rechnet die App eine unbekannte Drift von
+± 1,5°/min in die Unsicherheit ein (ohne Glätten meist PLAN statt AUFMASS). Der Neigungsfehler δ lässt sich **einmal je Gerät**
 kalibrieren: ein Ziel normal und mit dem Handy auf dem Kopf anzielen – der
 Fehler wechselt das Vorzeichen, das Ziel nicht: `δ = (θ₁ − θ₂)/2`. Die Formel
 gilt nur, wenn die Linse beim Umdrehen an ihrem Platz bleibt; wandert sie um
@@ -163,19 +164,26 @@ der Schließkorrektur zur Unsicherheit der verschobenen Wände, ab 3σ die ganze
 gleitend, damit eine Wand an der Schwelle nicht von ± 0,5 cm auf ± 20 cm
 springt. Ab 3σ nennt die App die Wand zum Nachmessen und die am stärksten
 geglättete Ecke. „Rechtwinklig glätten“ auszuschalten rät sie erst, wenn
-Bandmaße sich unter rechten Winkeln widersprechen (bleibende Restlücke) –
-auf bloßen Verdacht hin machte das rechtwinklige Räume nur schlechter.
+Bandmaße sich unter rechten Winkeln widersprechen (bleibende Restlücke; die
+Klasse fällt dann auf die Größe dieser Lücke) – auf bloßen Verdacht hin
+machte das rechtwinklige Räume nur schlechter.
 
-**Rechte Winkel sind eine Annahme.** Liegen die freien Wände allein durch
-Bandmaße und geglättete Ecken fest, prüft nichts die Ecken. Die App sagt dann
-„vorausgesetzt, die geglätteten Ecken sind rechtwinklig“ (`annahmen:
-["rechtwinklig"]`) und schlägt ein **Kontrollmaß** vor: das Bandmaß an der
-Wand, die der Schluss am stärksten verschoben hat. Danach überbestimmen die
-Bandmaße den Zug, und eine schiefe Ecke zeigt sich als Restlücke. Eine
-87°-Ecke (≈ 20 cm auf 5 m) liegt mit zwei Bandmaßen an der Rauschgrenze des
-Zielens: in der Simulation meist PLAN/SKIZZE, in 5–13 % noch AUFMASS – dann
-aber immer mit diesem Vorbehalt, und das Kontrollmaß deckt sie auf. (Eine
-Parallelogramm-Verzerrung zeigt erst eine Diagonale.)
+**Rechte Winkel sind eine Annahme.** Wurde geglättet, steht jedes Ergebnis
+unter dem Vorbehalt „vorausgesetzt, die geglätteten Ecken sind rechtwinklig“
+(`annahmen: ["rechtwinklig"]`) – im Assistenten, am Raum (Handy: „∟
+ANGENOMMEN“, PC) und im Bericht. Das Zielen allein erkennt eine schiefe Ecke
+erst ab einigen Grad sicher. Die App schlägt deshalb ein **Kontrollmaß** vor:
+alle freien Wände einer Richtung (im Rechteck eine Wand, im L zwei). Danach
+bestimmen die Bandmaße den Zug in dieser Richtung über, eine schiefe Ecke
+zeigt sich als bleibende Restlücke, und die Klasse fällt. Der Vorbehalt
+bleibt trotzdem: Ein Parallelogramm hat dieselben Längen – das zeigte erst
+eine Diagonale.
+
+Simulation einer 87°-Ecke (≈ 20 cm auf 5 m), zufällige Standpunkte und
+Haltungen, zwei Bandmaße: meist PLAN/SKIZZE, in 18–27 % noch AUFMASS mit
+≈ 20 cm Fehler – immer mit Vorbehalt. Nach dem vorgeschlagenen Kontrollmaß
+sinkt das auf 3 % (88°/92°-Trapez: von 73 % auf 11 %); rechtwinklige Räume
+bleiben AUFMASS.
 
 ### Ablauf in der App
 

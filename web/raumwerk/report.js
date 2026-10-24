@@ -648,8 +648,9 @@ function aufmassText(raum) {
   if (!a) return "Maße eingegeben";
   if (a.methode === "zielen") {
     const h = Number(a.kamerahoeheM);
-    return a.kalibriert ? "Aufmaß: gezielt, Maßstab per Bandmaß gesetzt"
-      : `Aufmaß: gezielt, Maßstab aus Kamerahöhe${isFinite(h) && h > 0 ? ` ${zahl(h, 2)} m` : ""}`;
+    const recht = Array.isArray(a.annahmen) && a.annahmen.includes("rechtwinklig") ? " (rechte Winkel angenommen)" : "";
+    return (a.kalibriert ? "Aufmaß: gezielt, Maßstab per Bandmaß gesetzt"
+      : `Aufmaß: gezielt, Maßstab aus Kamerahöhe${isFinite(h) && h > 0 ? ` ${zahl(h, 2)} m` : ""}`) + recht;
   }
   if (a.methode === "band") return "Aufmaß: Bandmaß, Wand für Wand";
   if (a.methode === "rechteck") return "Aufmaß: Rechteck per Bandmaß";

@@ -20,12 +20,15 @@ export const Quelle = { BAND: "band", GEZIELT: "gezielt", GETIPPT: "getippt" };
 /**
  * Ergebnis des Assistenten in den Raum `raumId` übernehmen.
  *
- * Eine neue Zielaufnahme ersetzt die Öffnungen und Einbauten der früheren.
- * Maßband und Rechteck liefern keine – dann bleiben die gezielten als
- * Handeinträge stehen. Von Hand gesetzte bleiben, solange ihre Wand noch
- * existiert. Was wegfällt, wird gezählt. Gibt Hinweise (Sätze) zurück.
+ * Eine neue Zielaufnahme ersetzt die Öffnungen und Einbauten der früheren –
+ * auch die, die danach von Hand nachgebessert wurden (`gezieltFrueher`): Man
+ * hat sie gerade neu gezielt, sonst stünden sie doppelt da. Reine
+ * Handeinträge bleiben, solange ihre Wand noch existiert. Maßband und
+ * Rechteck liefern keine Objekte – dann bleiben die gezielten als
+ * Handeinträge stehen. `neuRechnen` (aus `nachmessen`) ersetzt nur die noch
+ * gezielten. Was wegfällt, wird gezählt. Gibt Hinweise (Sätze) zurück.
  */
-export function uebernehmen(projekt, raumId, e, neueId) {
+export function uebernehmen(projekt, raumId, e, neueId, { neuRechnen = false } = {}) {
   const raum = projekt.raeume.find(r => r.id === raumId);
   if (!raum || !e) return [];
   const hinweise = [];
@@ -54,17 +57,12 @@ export function uebernehmen(projekt, raumId, e, neueId) {
   const ersetzen = e.methode === "zielen";
   const neuO = (e.oeffnungen || []).map(o => ({ ...o, id: o.id || neueId("oef"), raumId, ausAufnahme: true }));
   const neuE = (e.einbauten || []).map(x => ({ ...x, id: x.id || neueId("ein"), raumId, ausAufnahme: true }));
-  const oe = sortieren(projekt.oeffnungen.filter(o => o.raumId === raumId), neuO, ersetzen, o => (o.wandIndex ?? 0) < n);
-  const ei = sortieren(projekt.einbauten.filter(x => x.raumId === raumId), neuE, ersetzen,
+  const art = { ersetzen, auchNachgebesserte: ersetzen && !neuRechnen };
+  const oe = sortieren(projekt.oeffnungen.filter(o => o.raumId === raumId), neuO, art, o => (o.wandIndex ?? 0) < n);
+  const ei = sortieren(projekt.einbauten.filter(x => x.raumId === raumId), neuE, art,
     x => x.befestigung !== "WAND" || (x.wandIndex ?? 0) < n);
-  // Was neu gezielt wurde und schon (von Hand) an derselben Stelle steht, ist
-  // dasselbe Bauteil: die neue Messung gilt, Bezeichnung & Co. bleiben – sonst
-  // stünde eine von Hand korrigierte Tür nach „Neu aufmessen“ doppelt da.
-  const zusammen = ersetzen
-    ? zusammenfuehren(raum, oe.behalte, neuO, o => oeffnungMitte(raum, o)) + zusammenfuehren(raum, ei.behalte, neuE, x => G.lageImRaum(raum, x, 0))
-    : 0;
-  if (oe.ersetzt + ei.ersetzt) hinweise.push(`${anzahl(oe.ersetzt, ei.ersetzt)} der früheren Zielaufnahme entfernt – die neue Aufnahme ersetzt sie.`);
-  if (zusammen) hinweise.push(`${zusammen} vorhandene(s) Element(e) an derselben Stelle neu gezielt – Maße aus der neuen Aufnahme, Bezeichnung übernommen.`);
+  if (oe.ersetzt + ei.ersetzt) hinweise.push(`${anzahl(oe.ersetzt, ei.ersetzt)} der früheren Zielaufnahme entfernt – die neue Aufnahme ersetzt sie`
+    + (oe.nachgebessert + ei.nachgebessert ? `, auch ${oe.nachgebessert + ei.nachgebessert} von Hand nachgebesserte.` : "."));
   if (oe.weg + ei.weg) hinweise.push(`${anzahl(oe.weg, ei.weg)} entfernt – ihre Wand gibt es im neuen Umriss nicht mehr.`);
   if (oe.geloest + ei.geloest) hinweise.push(`${anzahl(oe.geloest, ei.geloest)} aus der Zielaufnahme bleiben als Handeintrag – Lage im neuen Umriss prüfen.`);
   projekt.oeffnungen = projekt.oeffnungen.filter(o => o.raumId !== raumId).concat(oe.behalte, neuO);
@@ -75,55 +73,19 @@ export function uebernehmen(projekt, raumId, e, neueId) {
 /**
  * Alte Objekte eines Raums sortieren: von einer neuen Zielaufnahme ersetzt,
  * wegen fehlender Wand entfernt oder behalten. Gezielte, die bleiben, gehören
- * ab jetzt dem Nutzer (`ausAufnahme = false`) – es gibt keine Aufnahme mehr,
- * aus der sie neu gerechnet würden.
+ * ab jetzt dem Nutzer (`ausAufnahme = false`, `gezieltFrueher`) – es gibt
+ * keine Aufnahme mehr, aus der sie neu gerechnet würden.
  */
-function sortieren(alte, neu, ersetzen, wandDa) {
-  const erg = { behalte: [], ersetzt: 0, weg: 0, geloest: 0 };
+function sortieren(alte, neu, { ersetzen, auchNachgebesserte }, wandDa) {
+  const erg = { behalte: [], ersetzt: 0, nachgebessert: 0, weg: 0, geloest: 0 };
   for (const y of alte) {
     if (ersetzen && y.ausAufnahme) { if (!neu.some(z => z.id === y.id)) erg.ersetzt++; continue; }
+    if (auchNachgebesserte && y.gezieltFrueher) { erg.ersetzt++; erg.nachgebessert++; continue; }
     if (!wandDa(y)) { erg.weg++; continue; }
-    if (y.ausAufnahme) { y.ausAufnahme = false; erg.geloest++; }
+    if (y.ausAufnahme) { y.ausAufnahme = false; y.gezieltFrueher = true; erg.geloest++; }
     erg.behalte.push(y);
   }
   return erg;
-}
-
-/**
- * Behaltene Objekte, die ein neu gezieltes gleicher Art an derselben Stelle
- * (≤ 0,5 m) haben, fallen weg; ihre nicht gemessenen Angaben (Bezeichnung,
- * Notiz …) wandern zum neuen. Gibt die Zahl der Zusammenführungen zurück.
- */
-function zusammenfuehren(raum, behalte, neu, lage) {
-  const gemessen = new Set(["id", "raumId", "art", "befestigung", "wandIndex", "abstandM", "breiteM", "hoeheM", "bruestungM", "relX", "relY", "ausAufnahme"]);
-  const frei = new Set(neu);
-  let zahl = 0;
-  for (const y of behalte.slice()) {
-    const py = lage(y);
-    if (!py || !Number.isFinite(py.x) || !Number.isFinite(py.y)) continue;
-    let best = null, bestD = 0.5;
-    for (const z of frei) {
-      if (z.art !== y.art) continue;
-      const pz = lage(z);
-      const d = pz ? Math.hypot(pz.x - py.x, pz.y - py.y) : Infinity;
-      if (d <= bestD) { best = z; bestD = d; }
-    }
-    if (!best) continue;
-    for (const [k, v] of Object.entries(y)) if (!gemessen.has(k) && best[k] == null) best[k] = v;
-    frei.delete(best);
-    behalte.splice(behalte.indexOf(y), 1);
-    zahl++;
-  }
-  return zahl;
-}
-
-/** Mitte einer Öffnung im Raum (m) – auf dem aktuellen Umriss. */
-function oeffnungMitte(raum, o) {
-  const e = G.ecken(raum), i = Number(o.wandIndex);
-  if (!e.length || !Number.isInteger(i) || i < 0 || i >= e.length) return null;
-  const a = e[i], b = e[(i + 1) % e.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  const t = (Number(o.abstandM) || 0) + (Number(o.breiteM) || 0) / 2;
-  return { x: a[0] + (b[0] - a[0]) / len * t, y: a[1] + (b[1] - a[1]) / len * t };
 }
 
 const anzahl = (o, e) => [o ? `${o} Öffnung(en)` : "", e ? `${e} Einbau(ten)` : ""].filter(Boolean).join(" und ");
@@ -171,13 +133,13 @@ export function nachmessen(projekt, raumId, wandIndex, laengeM, neueId) {
     // Noch gezielte Öffnungen/Einbauten per ID aktualisieren, damit
     // Bezeichnungen und Zuordnungen erhalten bleiben.
     const n = r.waende.length;
-    uebernehmen(projekt, raumId, {
+    const h = uebernehmen(projekt, raumId, {
       methode: "zielen", umriss: r.umriss, hoeheM: r.hoeheM, waende: r.waende,
       kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse, annahmen: r.annahmen, aufnahme: a,
       oeffnungen: gezielteNeu(projekt.oeffnungen, r.oeffnungen, raumId, n, (alt, o) => ({ ...alt, ...o })),
       einbauten: gezielteNeu(projekt.einbauten, r.einbauten, raumId, n, (alt, x) => ({ ...alt, ...x, hoeheM: x.hoeheM ?? alt.hoeheM ?? null }))
-    }, neueId);
-    return r.hinweise;
+    }, neueId, { neuRechnen: true });
+    return [...r.hinweise, ...h];
   }
 
   // Ohne Strahlen: Polygonzug ausgleichen.

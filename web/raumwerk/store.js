@@ -468,7 +468,7 @@ function raumBereinigen(r, i) {
 }
 
 const OEFF_FELDER = new Set(["id", "raumId", "art", "wandIndex", "abstandM", "breiteM", "hoeheM",
-  "bruestungM", "bezeichnung", "ausAufnahme"]);
+  "bruestungM", "bezeichnung", "ausAufnahme", "gezieltFrueher"]);
 
 function oeffnungBereinigen(o, raumId, vergeben, karte) {
   const art = istLeer(o.art) ? "TUER" : kuerzel(o.art);
@@ -483,12 +483,13 @@ function oeffnungBereinigen(o, raumId, vergeben, karte) {
   o.bruestungM = zahl(o.bruestungM, 0, 0, MAX_LAENGE);
   if (o.bezeichnung !== undefined) o.bezeichnung = text(o.bezeichnung);
   if (o.ausAufnahme !== undefined) o.ausAufnahme = !!o.ausAufnahme;
+  if (o.gezieltFrueher !== undefined) o.gezieltFrueher = !!o.gezieltFrueher;
   restBereinigen(o, OEFF_FELDER);
   return o;
 }
 
 const EINBAU_FELDER = new Set(["id", "raumId", "art", "befestigung", "wandIndex", "abstandM", "hoeheM",
-  "relX", "relY", "bezeichnung", "notiz", "ausAufnahme"]);
+  "relX", "relY", "bezeichnung", "notiz", "ausAufnahme", "gezieltFrueher"]);
 
 function einbauBereinigen(e, raumId, vergeben, karte) {
   const art = kuerzel(e.art);
@@ -506,6 +507,7 @@ function einbauBereinigen(e, raumId, vergeben, karte) {
   if (e.bezeichnung !== undefined) e.bezeichnung = text(e.bezeichnung);
   if (e.notiz !== undefined) e.notiz = text(e.notiz, MAX_NOTIZ);
   if (e.ausAufnahme !== undefined) e.ausAufnahme = !!e.ausAufnahme;
+  if (e.gezieltFrueher !== undefined) e.gezieltFrueher = !!e.gezieltFrueher;
   restBereinigen(e, EINBAU_FELDER);
   return e;
 }
@@ -669,11 +671,13 @@ export function varianteLoeschen(p, index) {
 /**
  * Von Hand geändert: Eine Öffnung oder ein Einbau aus der gespeicherten
  * Zielaufnahme (`ausAufnahme`) gehört ab jetzt dem Nutzer – das Nachmessen
- * rechnet sie nicht mehr neu und lässt sie, wie sie ist. Jeder Bearbeitungsweg
- * (Blatt, Inspektor, Plan) ruft das vor der Änderung auf.
+ * rechnet sie nicht mehr neu und lässt sie, wie sie ist. `gezieltFrueher`
+ * merkt sich die Herkunft: Eine neue Zielaufnahme ersetzt sie wie die
+ * gezielten. Jeder Bearbeitungsweg (Blatt, Inspektor, Plan) ruft das vor der
+ * Änderung auf.
  */
 export function vonHand(o) {
-  if (o && o.ausAufnahme) o.ausAufnahme = false;
+  if (o && o.ausAufnahme) { o.ausAufnahme = false; o.gezieltFrueher = true; }
   return o;
 }
 
@@ -688,7 +692,10 @@ const EINBAU_LAGE = ["befestigung", "wandIndex", "abstandM", "relX", "relY"];
 export function einbauVerschieben(e, patch, zug = {}) {
   if (e.ausAufnahme && zug.gezielt?.id !== e.id) zug.gezielt = { id: e.id, lage: EINBAU_LAGE.map(k => e[k]) };
   Object.assign(e, patch);
-  if (zug.gezielt?.id === e.id) e.ausAufnahme = EINBAU_LAGE.every((k, i) => e[k] === zug.gezielt.lage[i]);
+  if (zug.gezielt?.id === e.id) {
+    e.ausAufnahme = EINBAU_LAGE.every((k, i) => e[k] === zug.gezielt.lage[i]);
+    if (!e.ausAufnahme) e.gezieltFrueher = true;
+  }
   return e;
 }
 

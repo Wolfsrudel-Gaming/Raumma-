@@ -143,8 +143,11 @@ bietet drei Wege, je nachdem, was vor Ort zur Hand ist:
 
 Das Ergebnis wird mit Maß-Herkunft übernommen (`uebernahme.js`); die
 Rohdaten der Aufnahme bleiben im Projekt, sodass ein später nachgemessenes
-Bandmaß den ganzen Raum neu rechnet. Höhen zählen ab Fertigfußboden, auch
-wenn der Estrich noch fehlt (`raum.aufbauM`).
+Bandmaß den ganzen Raum neu rechnet. Von Hand geänderte oder gelöschte Türen,
+Fenster und Einbauten bleiben dabei, wie sie sind. „Neu aufmessen“ ersetzt
+alles, was aus einer früheren Zielaufnahme stammt (auch Nachgebessertes);
+reine Handeinträge bleiben. Höhen zählen ab Fertigfußboden, auch wenn der
+Estrich noch fehlt (`raum.aufbauM`).
 
 Nachgewiesen wird der ganze Ablauf durch einen **Feldtest im echten Browser**
 (`web/tests/e2e/feld.e2e.mjs`, Playwright, in der CI): simulierte Lagesensorik

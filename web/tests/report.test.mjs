@@ -173,6 +173,10 @@ L.varianten = [{ id: "v", name: "Plan B", platzhalter: [
 ] }];
 L.aktiveVariante = 0;
 html = berichtHtml(L, { datum: DATUM });
+pruef("Vorbehalt: ohne Annahme kein Hinweis", !html.includes("rechte Winkel angenommen"));
+r0.aufmass.annahmen = ["rechtwinklig"];
+pruef("Vorbehalt: rechte Winkel angenommen steht im Bericht", berichtHtml(L, { datum: DATUM }).includes("rechte Winkel angenommen"));
+delete r0.aufmass.annahmen;
 sicher("L-Raum", html);
 pruef("L: Name", html.includes("L-Werkstatt"));
 pruef("L: Geschoss 1. UG", html.includes("1. UG"));

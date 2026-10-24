@@ -309,23 +309,31 @@ const rechtwinklig = raum => G.waende(G.ecken(raum)).every(w => Math.abs(Math.ab
   wahr("neuer Schuss trifft die richtige Wand", e3 && e3.wandIndex === ost, JSON.stringify(e3));
 }
 
-// --------- Neu aufmessen: von Hand korrigierte Tür steht nicht doppelt da (Prüfer v3)
+// --------- Neu aufmessen: nachgebesserte gezielte Tür steht nicht doppelt da (Prüfer v3)
+// Regel statt Abstandsraten: Eine neue Zielaufnahme ersetzt alles, was aus
+// einer früheren stammt (auch Nachgebessertes), reine Handeinträge bleiben –
+// unabhängig von Startecke, Wandnummern und Nähe zu anderen Bauteilen.
 {
   const p = neuesProjekt();
   uebernehmen(p, "r1", zielErgebnis(aufnahme(), 0), neueId);
   const tuer = p.oeffnungen.find(o => o.id === "t1");
-  tuer.ausAufnahme = false;               // wie Store.vonHand: von Hand geändert
-  tuer.breiteM = 0.885; tuer.bezeichnung = "Flur";
-  const handDose = { id: "hand-1", raumId: "r1", art: "STECKDOSE", befestigung: "WAND", wandIndex: 3, abstandM: 0.2, hoeheM: 0.3 };
-  p.einbauten.push(handDose);              // reiner Handeintrag ohne Gegenstück
+  tuer.ausAufnahme = false; tuer.gezieltFrueher = true;   // wie Store.vonHand
+  tuer.breiteM = 0.885;
+  const handDose = { id: "hand-1", raumId: "r1", art: "SCHALTER", befestigung: "WAND", wandIndex: 0, abstandM: 3.2, hoeheM: 1.10 };
+  p.einbauten.push(handDose);              // reiner Handeintrag direkt neben dem gezielten Schalter
   const h = uebernehmen(p, "r1", zielErgebnis(aufnahme({ praefix: "neu-" }), 0), neueId);
-  const tueren = p.oeffnungen.filter(o => o.art === "TUER");
-  gleich("Neu aufmessen: eine Tür statt zwei", tueren.map(o => o.id), ["neu-t1"]);
-  wahr("Neu aufmessen: Bezeichnung der Hand-Tür übernommen", tueren[0].bezeichnung === "Flur", JSON.stringify(tueren[0]));
-  wahr("Neu aufmessen: neue Tür ist gezielt", tueren[0].ausAufnahme === true);
-  wahr("Neu aufmessen: Handeintrag ohne Gegenstück bleibt", p.einbauten.some(x => x.id === "hand-1"));
-  wahr("Neu aufmessen: Hinweis nennt die Zusammenführung", h.some(x => /an derselben Stelle neu gezielt/.test(x)), h.join(" | "));
+  gleich("Neu aufmessen: eine Tür statt zwei", p.oeffnungen.filter(o => o.art === "TUER").map(o => o.id), ["neu-t1"]);
+  wahr("Neu aufmessen: Hinweis nennt die nachgebesserte", h.some(x => /auch 1 von Hand nachgebesserte/.test(x)), h.join(" | "));
+  wahr("Neu aufmessen: reiner Handeintrag neben gezieltem bleibt", p.einbauten.some(x => x.id === "hand-1"));
   gleich("Neu aufmessen: keine doppelten IDs", new Set(p.oeffnungen.map(o => o.id)).size, p.oeffnungen.length);
+  // Nachmessen rechnet nur neu: Handeinträge und Nachgebessertes bleiben unberührt.
+  const sch = p.einbauten.find(x => x.id === "neu-e2");
+  sch.ausAufnahme = false; sch.gezieltFrueher = true; sch.hoeheM = 1.20; sch.bezeichnung = "TV";
+  const h2 = nachmessen(p, "r1", 1, 4.0, neueId);
+  wahr("Nachmessen: Handeintrag bleibt", p.einbauten.some(x => x.id === "hand-1"));
+  const sch2 = p.einbauten.find(x => x.id === "neu-e2");
+  wahr("Nachmessen: nachgebesserter Schalter bleibt, wie er ist", sch2 && sch2.hoeheM === 1.20 && sch2.bezeichnung === "TV", JSON.stringify(sch2));
+  wahr("Nachmessen: Hinweise der Übernahme kommen mit", Array.isArray(h2));
 }
 
 console.log(`uebernahme.test: ${ok} ok, ${fail} fail`);

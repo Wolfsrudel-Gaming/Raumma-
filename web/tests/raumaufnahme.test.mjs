@@ -281,6 +281,27 @@ const vierAufnahme = (R, g, s0) => {
   x.ecken = R.map(q => { const t = schuss(q, g, 5000, S4); return { v: t.v, t: t.t, ebene: "boden" }; });
   return x;
 };
+/**
+ * Aufnahme von einem zufälligen Standpunkt im Raum – wie im Feld: Schüsse
+ * außerhalb 12–75° lehnt die App ab, dann stellt man sich woanders hin (null).
+ */
+function freieAufnahme(R, g, s0, { schluss = false, dtMs = 5000 } = {}) {
+  seed = s0; uhr = 0;
+  const bx = Math.max(...R.map(q => q[0])), by = Math.max(...R.map(q => q[1]));
+  const von = [0.6 + zufall() * (bx - 1.2), 0.6 + zufall() * (by - 1.2)];
+  if (!innen(R, von)) return null;
+  const x = A.neueAufnahme(1.45);
+  x.ecken = R.map(q => { const t = schuss(q, g, dtMs, von); return { v: t.v, t: t.t, ebene: "boden" }; });
+  if (x.ecken.some(e => Z.zielBereich(e.v) !== "ok")) return null;
+  if (schluss) { const t = schuss(R[0], g, dtMs, von); x.schluss = { v: t.v, t: t.t }; }
+  return x;
+}
+function innen(R, [x, y]) {
+  let c = false;
+  for (let i = 0, j = R.length - 1; i < R.length; j = i++)
+    if ((R[i][1] > y) !== (R[j][1] > y) && x < (R[j][0] - R[i][0]) * (y - R[i][1]) / (R[j][1] - R[i][1]) + R[i][0]) c = !c;
+  return c;
+}
 const wv = wahreLaengen(VIER);
 a = vierAufnahme(VIER, { ...HAND, rauschGrad: 0.15 }, 3);
 a.rechtwinklig = false;
@@ -360,31 +381,33 @@ r = A.rekonstruiere(a);
 wahr("Rechteck, 2 Bandmaße: Annahme rechtwinklig genannt", r.annahmen.includes("rechtwinklig"), JSON.stringify(r.annahmen));
 wahr("Rechteck, 2 Bandmaße: Kontrollmaß vorgeschlagen", r.naechstesMass && r.naechstesMass.kontrolle && !(String(r.naechstesMass.wandIndex) in a.bandmasse), JSON.stringify(r.naechstesMass));
 wahr("Rechteck, 2 Bandmaße: freie Wände nicht ± 0,5 cm", r.waende.filter(w => w.quelle !== "band").every(w => w.sigmaM > 0.01), JSON.stringify(r.waende.map(w => w.sigmaM.toFixed(3))));
-a.bandmasse = { ...a.bandmasse, [r.naechstesMass.wandIndex]: wr[r.naechstesMass.wandIndex] };
+for (const k of r.naechstesMass.waende) a.bandmasse[k] = wr[k];
 r = A.rekonstruiere(a);
-wahr("Rechteck + Kontrollmaß: keine Annahme mehr", r.annahmen.length === 0 && r.klasse === "AUFMASS", `${r.klasse} ${JSON.stringify(r.annahmen)}`);
-// 87°-Ecke mit zwei Bandmaßen: ~20 cm Lücke liegen an der Rauschgrenze des
-// Zielens – statistisch nicht immer zu erkennen. Dann darf AUFMASS nur unter
-// der genannten Annahme stehen, mit dem Kontrollmaß, das sie prüft; und mit
-// diesem Kontrollmaß fällt die schiefe Ecke auf.
+// Auch mit Kontrollmaß bleibt der Vorbehalt: Ein Parallelogramm hat dieselben
+// Längen – erst eine Diagonale prüfte die Winkel ganz.
+wahr("Rechteck + Kontrollmaß: AUFMASS, Vorbehalt bleibt", r.klasse === "AUFMASS" && r.annahmen.includes("rechtwinklig"), `${r.klasse} ${JSON.stringify(r.annahmen)}`);
+// 87°-Ecke, zufällige Standpunkte (Prüfer: an einem festen Standpunkt sah es
+// besser aus als es ist). Mit zwei Bandmaßen liegt die Ecke an der
+// Rauschgrenze des Zielens – AUFMASS darf dann nur mit Vorbehalt stehen. Sind
+// alle Wände gemessen, bestimmen die Bandmaße den Zug über: Die schiefe Ecke
+// zeigt sich immer.
 const SCHIEF87 = [[0, 4], [5, 4], [5, 0], [0.21, 0]];
 const w87 = wahreLaengen(SCHIEF87);
-let ohneVorbehalt = 0, kontrolleVerfehlt = 0, verdeckt = 0;
-for (let k = 1; k <= 40; k++) {
-  a = vierAufnahme(SCHIEF87, { ...HAND, rauschGrad: 0.2 }, 100 + k);
-  a.bandmasse = { [w87.findIndex(l => Math.abs(l - 5) < 1e-9)]: 5.0, [w87.findIndex(l => Math.abs(l - 4) < 1e-9)]: 4.0 };
+let ohneVorbehalt = 0, unerkannt = 0, laeufe = 0;
+for (let k = 1; laeufe < 40 && k < 400; k++) {
+  a = freieAufnahme(SCHIEF87, { ...HAND, rauschGrad: 0.2 }, 300 + k, { schluss: true });
+  if (!a) continue;
+  laeufe++;
+  a.bandmasse = { 0: w87[0], 1: w87[1] };
   r = A.rekonstruiere(a);
   const f = r.waende.map((w, i) => Math.abs(w.laenge - w87[i]));
-  if (r.klasse !== "AUFMASS" || Math.max(...f) <= 0.10) continue;
-  verdeckt++;
-  if (!r.annahmen.includes("rechtwinklig") || !r.naechstesMass?.kontrolle) { ohneVorbehalt++; continue; }
-  a.bandmasse = { ...a.bandmasse, [r.naechstesMass.wandIndex]: w87[r.naechstesMass.wandIndex] };
-  const r2 = A.rekonstruiere(a);
-  if (r2.klasse === "AUFMASS" && !r2.hinweise.some(h => /passen nicht zu rechten Winkeln/.test(h))) kontrolleVerfehlt++;
+  if (r.klasse === "AUFMASS" && Math.max(...f) > 0.10 && !r.annahmen.includes("rechtwinklig")) ohneVorbehalt++;
+  a.bandmasse = { 0: w87[0], 1: w87[1], 2: w87[2], 3: w87[3] };
+  r = A.rekonstruiere(a);
+  if (r.klasse === "AUFMASS" || !r.hinweise.some(h => /passen nicht zu rechten Winkeln/.test(h))) unerkannt++;
 }
-wahr(`87°-Ecke: AUFMASS mit > 10 cm Fehler nur unter Vorbehalt (${ohneVorbehalt} von ${verdeckt})`, ohneVorbehalt === 0);
-wahr(`87°-Ecke: das Kontrollmaß deckt die Ecke auf (${kontrolleVerfehlt} verfehlt)`, kontrolleVerfehlt === 0);
-wahr(`87°-Ecke: meist schon ohne Kontrollmaß erkannt (${40 - verdeckt}/40)`, verdeckt <= 10);
+wahr(`87°-Ecke: kein AUFMASS mit > 10 cm Fehler ohne Vorbehalt (${ohneVorbehalt}/${laeufe})`, laeufe === 40 && ohneVorbehalt === 0);
+wahr(`87°-Ecke, alle Wände gemessen: immer erkannt (${unerkannt} unerkannt)`, unerkannt === 0);
 
 // ------------- 15. Ohne Glätten: Winkel tragen die Unsicherheit von h, r, δ
 // L-Raum, zwei Bandmaße, nicht kalibriert: Nahe und ferne Ecken verzerren
@@ -409,15 +432,45 @@ for (let k = 1; k <= 40; k++) {
 wahr(`ohne Glätten, L: 2σ deckt meist jede Wand (${deckt}/40)`, deckt >= 34);
 wahr(`ohne Glätten, L: nie AUFMASS mit > 10 cm Fehler (${aufmassFalsch}/40)`, aufmassFalsch === 0);
 
-// ------------- 16. Alte Aufnahmen (version 2): bekannte Höhe = Oberkante
-// Bis version 2 hieß hoeheBekanntM „Oberkante über dem gezielten Boden“ –
-// gespeicherte Aufnahmen rechnen so weiter, statt den Maßstab zu kippen.
+// ------------- 16. Gespeicherte Aufnahmen: bekannte Höhe = angezeigte Höhe
+// Neben dem Eingabefeld stand immer die angezeigte Höhe (B × H · Brüstung) –
+// gespeicherte Aufnahmen rechnen damit wie neue, ohne Versionsweiche.
 a = aufnahme(HAND);
 a.version = 2;
-a.oeffnungen[1].hoeheBekanntM = 2.20;      // Fenster-Oberkante, damals richtig
+a.oeffnungen[1].hoeheBekanntM = 1.30;
 r = A.rekonstruiere(a);
-wahr(`version 2, Fenster-Oberkante 2,20: max ${(maxWandFehler(r) * 100).toFixed(1)} cm ≤ 10 cm`, maxWandFehler(r) <= 0.10);
-wahr("neue Aufnahmen: version 3", A.neueAufnahme().version === 3);
+wahr(`gespeichert, Fensterhöhe 1,30: max ${(maxWandFehler(r) * 100).toFixed(1)} cm ≤ 10 cm`, maxWandFehler(r) <= 0.10);
+
+// ------------- 17. Schräge Wand (80°): nicht als „fast rechtwinklig“ in den Ausgleich
+// Ecken, die nicht geglättet werden, dürfen auch h, r, δ nicht zum rechten
+// Winkel ziehen (früher bis 12°, geglättet nur bis 8° – Arm 0,87 statt 0,41 m).
+const TRAPEZ80 = [[0, 4], [5, 4], [5, 0], [0.705, 0]];
+const wt = wahreLaengen(TRAPEZ80);
+let deckt80 = 0, n80 = 0;
+for (let k = 1; n80 < 40 && k < 400; k++) {
+  a = freieAufnahme(TRAPEZ80, { ...HAND, rauschGrad: 0.2 }, 600 + k, { schluss: true });
+  if (!a) continue;
+  n80++;
+  a.bandmasse = { 0: wt[0] };
+  r = A.rekonstruiere(a);
+  if (r.waende.every((w, i) => Math.abs(w.laenge - wt[i]) <= 2 * w.sigmaM + 0.005)) deckt80++;
+}
+wahr(`80°-Wand, 1 Bandmaß: 2σ deckt meist jede Wand (${deckt80}/${n80})`, n80 === 40 && deckt80 >= 34);
+
+// ------------- 18. Ohne Schlussschuss: Drift gehört in die Unsicherheit
+// 2°/min Drift, 10 s je Schuss, kein Kontrollschuss, ohne Glätten.
+let falsch = 0, nDrift = 0;
+for (let k = 1; nDrift < 40 && k < 400; k++) {
+  a = freieAufnahme(L, { ...HAND, rauschGrad: 0.2, driftGradProMin: (k % 2 ? 2 : -2) }, 900 + k, { schluss: false, dtMs: 10000 });
+  if (!a) continue;
+  nDrift++;
+  a.rechtwinklig = false;
+  const wl = wahreLaengen();
+  a.bandmasse = { 0: wl[0], 1: wl[1] };
+  r = A.rekonstruiere(a);
+  if (r.klasse === "AUFMASS" && r.waende.some((w, i) => Math.abs(w.laenge - wl[i]) > 2 * w.sigmaM + 0.005)) falsch++;
+}
+wahr(`ohne Schluss, Drift 2°/min: AUFMASS außerhalb 2σ selten (${falsch}/${nDrift})`, nDrift === 40 && falsch <= 2);
 
 console.log(`raumaufnahme.test: ${ok} ok, ${fail} fail`);
 if (fail) process.exit(1);

@@ -240,8 +240,10 @@ function aufmassMarke(r) {
   const m = r.aufmass && r.aufmass.methode;
   if (m === "zielen") {
     const k = r.aufmass.klasse || (r.aufmass.kalibriert ? "PLAN" : "SKIZZE");
+    // Rechte Winkel nur angenommen: ehrlich mit Vorbehalt, nicht als Haken.
+    const recht = Array.isArray(r.aufmass.annahmen) && r.aufmass.annahmen.includes("rechtwinklig");
     return el("span", { class: "marke " + (k === "AUFMASS" ? "ok" : "pruef") },
-      k === "AUFMASS" ? "GEZIELT · AUFMASS ✓" : k === "PLAN" ? "GEZIELT · PLAN" : "GEZIELT · SKIZZE");
+      k === "AUFMASS" ? (recht ? "GEZIELT · AUFMASS · ∟ ANGENOMMEN" : "GEZIELT · AUFMASS ✓") : k === "PLAN" ? "GEZIELT · PLAN" : "GEZIELT · SKIZZE");
   }
   if (m === "band") return el("span", { class: "marke ok" }, "BANDMASS");
   if (m === "rechteck") return el("span", { class: "marke ok" }, "RECHTECK");

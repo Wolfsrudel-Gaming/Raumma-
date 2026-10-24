@@ -834,7 +834,8 @@ function renderRaum() {
       <button class="haupt gross" id="rAufnehmen">${am ? "Raum neu aufnehmen" : "Raum aufnehmen"}</button>
       <div class="aufmass-info">
         <b>${komma(G.flaeche(r), 2)} m²</b> · ${laengen.length} Wände · Umfang ${komma(umfang, 2)} m
-        <span>${am ? `Aufmaß: ${esc(METHODE[am.methode] || am.methode || "–")}${am.datum ? ` · ${esc(datumKurz(am.datum))}` : ""}` : "Noch nicht aufgenommen – Maße sind Platzhalter."}</span>
+        <span>${am ? `Aufmaß: ${esc(METHODE[am.methode] || am.methode || "–")}${am.klasse ? ` · ${esc(am.klasse)}` : ""}${am.datum ? ` · ${esc(datumKurz(am.datum))}` : ""}` : "Noch nicht aufgenommen – Maße sind Platzhalter."}</span>
+        ${Array.isArray(am?.annahmen) && am.annahmen.includes("rechtwinklig") ? `<span class="notiz">Vorausgesetzt: Die geglätteten Ecken sind rechtwinklig.</span>` : ""}
       </div>
       <div class="wand-liste">
         <div class="wand-kopf"><span>Nr.</span><span>Länge · Herkunft</span><span>nachmessen</span></div>

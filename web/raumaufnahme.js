@@ -28,7 +28,7 @@
  *
  * Form der Aufnahme (alles JSON, wird am Raum gespeichert):
  *   {
- *     version: 3, methode: "zielen",   // 3: hoeheBekanntM = angezeigte Höhe (s. u.)
+ *     version: 2, methode: "zielen",
  *     haltung: "hand" | "stativ",
  *     kamerahoeheM: 1.40,             // Linse über dem Boden, Handy senkrecht (geschätzt)
  *     linseM, armM: null | Zahl,      // sonst Vorgabe der Haltung
@@ -43,9 +43,8 @@
  *     rechtwinklig: true,
  *     oeffnungen: [{ id, art, a: v (unten links), b: v (oben rechts), ta, tb, hoeheBekanntM? }],
  *                                      // hoeheBekanntM = angezeigte Höhe: lichte Höhe ab FFB,
- *                                      // beim Fenster mit Brüstung Oberkante − Unterkante;
- *                                      // in Aufnahmen bis version 2 noch die Oberkante
- *                                      // über dem gezielten Boden (wird so weitergelesen)
+ *                                      // beim Fenster mit Brüstung Oberkante − Unterkante
+ *                                      // (so stand es schon immer neben dem Eingabefeld)
  *     einbauten:  [{ id, art, v, t, befestigung }]
  *   }
  *
@@ -78,13 +77,20 @@ const SIGMA_LUECKE_M = 0.01;
  * die Wände ein, die erst der Schluss des Zugs festlegt.
  */
 const SIGMA_RECHT_ANNAHME_GRAD = 0.3;
+/** Bis zu dieser Abweichung gilt eine Ecke als rechtwinklig – im Ausgleich wie beim Glätten. */
+const RECHT_FANG_GRAD = 8;
+/**
+ * Gier-Drift ohne Schlussschuss (1σ, Grad/Minute): Der Kreisel läuft weg, und
+ * ohne zweiten Blick auf Ecke 1 weiß das niemand – also als Unsicherheit.
+ */
+const SIGMA_DRIFT_GRAD_MIN = 1.5;
 /** Lichte Höhe einer Norm-Innentür (DIN 18101, Zarge) – Vorschlag, wenn man sie anzielt. */
 export const TUER_LICHT_M = 1.97;
 
 /** Leere Aufnahme mit sinnvollen Vorgaben. */
 export function neueAufnahme(kamerahoeheM = 1.4, boden = "fertig", haltung = "hand") {
   return {
-    version: 3, methode: "zielen", haltung, kamerahoeheM, linseM: null, armM: null,
+    version: 2, methode: "zielen", haltung, kamerahoeheM, linseM: null, armM: null,
     neigungsfehlerGrad: null, boden,
     ecken: [], schluss: null, hoehe: null, raumhoeheM: null, senkrechte: [],
     bandmasse: {}, rechtwinklig: true, oeffnungen: [], einbauten: []
@@ -208,12 +214,9 @@ function residuen(a, x, start, plan) {
   }
   // Bekannte Öffnungshöhe = die angezeigte Größe: ab FFB, beim Fenster mit
   // Brüstung von Unter- bis Oberkante (wie in Schritt 4 von `rekonstruiere`).
-  // Gespeicherte Aufnahmen bis version 2 meinten die Oberkante über dem
-  // gezielten Boden – sie rechnen weiter so, statt still den Maßstab zu kippen.
   for (const { o, bruestung } of plan.oeffnungen) {
     const r = oeffnungRoh(o, p, geo);
-    const unten = plan.alteHoehe ? 0 : bruestung ? r?.unten : plan.abzug;
-    res.push(r ? (r.oben - unten - Number(o.hoeheBekanntM)) / SIGMA_KANTE_M : 1e3);
+    res.push(r ? (r.oben - (bruestung ? r.unten : plan.abzug) - Number(o.hoeheBekanntM)) / SIGMA_KANTE_M : 1e3);
   }
   res.push((x[0] - start.p.h) / start.sig.h, (x[1] - start.p.r) / start.sig.r, (x[2] - start.p.delta) / start.sig.delta);
   return res;
@@ -328,9 +331,9 @@ export function rekonstruiere(a, optionen = {}) {
   // (δ landete so bei 2,5° statt 0,5°) und verzerrt die Winkel aller Wände.
   const bandSigma = i => Math.hypot(SIGMA_BAND_M, geo.sigma[i] || 0, geo.sigma[(i + 1) % n] || 0);
   const plan = {
-    n, band: band.map(([i, m]) => [i, m, bandSigma(i)]), abzug, alteHoehe: Number(a.version) > 0 && Number(a.version) < 3,
+    n, band: band.map(([i, m]) => [i, m, bandSigma(i)]), abzug,
     recht: a.rechtwinklig ? geo.roh.map((w, i) => [i, Math.round(w.drehung / 90) * 90])
-      .filter(([i, ziel]) => Math.abs(geo.roh[i].drehung - ziel) < 12) : [],
+      .filter(([i, ziel]) => Math.abs(geo.roh[i].drehung - ziel) < RECHT_FANG_GRAD) : [],
     raumhoehe: a.hoehe && Number(a.raumhoeheM) > 0 ? Number(a.raumhoeheM) : null,
     senkrechte: (a.senkrechte || []).filter(s => s && s.vUnten && s.vOben && Number(s.hoeheM) > 0),
     oeffnungen: (a.oeffnungen || []).filter(o => Number(o.hoeheBekanntM) > 0 && o.a && o.b)
@@ -368,10 +371,16 @@ export function rekonstruiere(a, optionen = {}) {
   // (h, r, δ) – letztere ist zwischen den Wänden korreliert.
   const rausch = geo.roh.map((_, i) => Math.hypot(geo.sigma[i], geo.sigma[(i + 1) % geo.sigma.length]));
   const Gm = lsg.Q ? geo.roh.map((_, i) => ableitung(a, p, i)) : [];
+  // Ohne Schlussschuss ist die Drift unbekannt: ihr Einfluss auf die Längen
+  // (alle Wände gemeinsam) geht als eine weitere Spalte in die Kovarianz.
+  const drift = !a.schluss ? SIGMA_DRIFT_GRAD_MIN * Z.GRAD / 60000 : 0;
+  const geoDrift = drift ? geometrie(a, { ...p, omega: p.omega + drift }) : null;
+  const dDrift = geoDrift && geoDrift.roh.length === geo.roh.length ? geo.roh.map((w, i) => geoDrift.roh[i].laenge - w.laenge) : null;
   const C = geo.roh.map((_, i) => geo.roh.map((__, j) => {
     let v = i === j ? rausch[i] ** 2 : 0;
     if (lsg.Q && Gm[i] && Gm[j])
       for (let s = 0; s < 3; s++) for (let t = 0; t < 3; t++) v += Gm[i][s] * lsg.Q[s][t] * Gm[j][t];
+    if (dDrift) v += dDrift[i] * dDrift[j];
     return v;
   }));
   const steil = (a.ecken || []).filter(e => e.ebene !== "decke" && Z.zielBereich(e.v, p) === "steil").length;
@@ -379,7 +388,7 @@ export function rekonstruiere(a, optionen = {}) {
 
   // 3. Wände: glätten, Bandmaße einsetzen, ausgleichen.
   let waende = geo.roh.map(w => ({ ...w }));
-  if (a.rechtwinklig) waende = G.rechtwinklig(waende, 8);
+  if (a.rechtwinklig) waende = G.rechtwinklig(waende, RECHT_FANG_GRAD);
   for (const [i, m] of band) waende[i].laenge = m;
   const fest = band.map(([i]) => i);
   // Erklärt das Messrauschen die Lücke nicht, stimmt das Modell nicht (meist
@@ -391,7 +400,7 @@ export function rekonstruiere(a, optionen = {}) {
   // Schließkorrektur zur Unsicherheit, ab 3σ die ganze – sonst springt eine
   // Wand an der Schwelle von ± 0,5 cm auf ± 20 cm.
   const gewichtKorrektur = klemm((lueckeSigma - 1.5) / 1.5, 0, 1);
-  const sigmaRichtung = richtungsSigma(geo, waende, fest, a, p, lsg.Q);
+  const sigmaRichtung = richtungsSigma(geo, waende, fest, a, p, lsg.Q, drift);
   const geglaettet = waende.some((w, i) => w.drehung !== geo.roh[i].drehung);
   const aus = G.ausgleichen(waende, fest);
   const korrektur = aus.korrektur;
@@ -405,7 +414,7 @@ export function rekonstruiere(a, optionen = {}) {
     hinweise.push(`Restlücke vor dem Ausgleich ${Math.round(aus.restlueckeVorher * 100)} cm – mehr, als die Messung erklärt: `
       + `Wand ${k + 1} musste um ${Math.round(Math.abs(korrektur[k]) * 100)} cm verschoben werden. Wand ${k + 1} mit dem Bandmaß nachmessen`
       + (geglaettet ? ` – passt es nicht zum Ausgleich, ist eine Ecke nicht rechtwinklig${schiefsteEcke(geo.roh, waende)}.` : " und die Bandmaße prüfen."));
-  } else if (aus.restlueckeVorher > 0.03)
+  } else if (aus.restlueckeVorher > 0.03 && aus.restlueckeNachher <= 0.02)
     hinweise.push(`Restlücke vor dem Ausgleich ${Math.round(aus.restlueckeVorher * 100)} cm – auf die nicht gemessenen Wände verteilt.`);
   if (aus.restlueckeNachher > 0.02)
     hinweise.push(geglaettet
@@ -426,7 +435,9 @@ export function rekonstruiere(a, optionen = {}) {
       korrekturM: korrektur[i]
     };
   });
-  const maxSigma = Math.max(...wl.map(w => w.sigmaM));
+  // Schließt der Umriss nicht (Bandmaße widersprechen sich), stimmt die Form
+  // höchstens so gut wie die Lücke – auch wenn jede Wand genau gemessen ist.
+  const maxSigma = Math.max(...wl.map(w => w.sigmaM), aus.restlueckeNachher > 0.02 ? aus.restlueckeNachher : 0);
   // Höhen (Steckdosen, Brüstungen, Raumhöhe) hängen direkt an der Linsenhöhe –
   // deren Restunsicherheit ist die ehrliche Höhenangabe.
   const sigmaHoeheM = lsg.Q ? Math.sqrt(Math.max(0, lsg.Q[0][0]) + (0.005) ** 2) : start.sig.h;
@@ -437,26 +448,27 @@ export function rekonstruiere(a, optionen = {}) {
   }
   const klasse = maxSigma <= 0.05 ? "AUFMASS" : maxSigma <= 0.15 ? "PLAN" : "SKIZZE";
   const offen = wl.map((w, i) => [i, w]).filter(([, w]) => w.quelle !== "band");
-  // Liegen die freien Wände allein durch Bandmaße und geglättete Ecken fest,
-  // prüft nichts die Ecken: Das Ergebnis gilt nur, wenn sie rechtwinklig sind.
+  // Geglättete Ecken sind eine Annahme, die keine Zielmessung prüft (auch
+  // Bandmaße an allen Wänden nicht: ein Parallelogramm hat dieselben Längen).
   const frei = offen.map(([i]) => i);
-  const annahmeRecht = geglaettet && zweiRichtungen(waende, frei);
+  const annahmeRecht = geglaettet;
   let naechstesMass = null;
   if (offen.length && klasse !== "AUFMASS") {
     const [i, w] = band.length ? offen.reduce((b, c) => (c[1].sigmaM > b[1].sigmaM ? c : b))
       : offen.reduce((b, c) => (c[1].laenge > b[1].laenge ? c : b));
     naechstesMass = { wandIndex: i, text: `Am meisten bringt jetzt ein Bandmaß an Wand ${i + 1} (${fmt(w.laenge)}, bisher ± ${Math.round(w.sigmaM * 100)} cm).` };
-  } else if (annahmeRecht) {
-    // Ein Kontrollmaß lohnt, wenn danach die Bandmaße den Zug überbestimmen.
-    // Am meisten verrät die Wand, die der Schluss am stärksten verschoben hat –
-    // dort zeigt sich eine schiefe Ecke; sonst die, die am meisten an der
-    // Annahme hängt.
-    const kontrolle = offen.filter(([i]) => !zweiRichtungen(waende, frei.filter(j => j !== i)));
-    const gewicht = i => Math.abs(korrektur[i]) + sigmaRichtung.annahme[i];
-    if (kontrolle.length) {
-      const [i, w] = kontrolle.reduce((b, c) => (gewicht(c[0]) > gewicht(b[0]) ? c : b));
-      naechstesMass = { wandIndex: i, kontrolle: true,
-        text: `Kontrollmaß: ein Bandmaß an Wand ${i + 1} (${fmt(w.laenge)}) zeigt, ob eine Ecke schief ist – das Ergebnis setzt bisher rechte Winkel voraus.` };
+  } else if (annahmeRecht && frei.length) {
+    // Kontrollmaß: alle freien Wände einer Richtung messen – dann bestimmen die
+    // Bandmaße den Zug in dieser Richtung über, und eine schiefe Ecke zeigt sich
+    // als Restlücke. Vorschlag: die kleinere Gruppe, bei Gleichstand die, die
+    // der Schluss am stärksten verschoben hat.
+    const gruppen = richtungsGruppen(waende, frei);
+    const gewicht = g => g.reduce((s, i) => s + Math.abs(korrektur[i]) + sigmaRichtung.annahme[i], 0);
+    if (gruppen.length <= 2) {
+      const g = gruppen.reduce((b, c) => (c.length < b.length || (c.length === b.length && gewicht(c) > gewicht(b)) ? c : b));
+      const liste = g.map(i => `Wand ${i + 1} (${fmt(wl[i].laenge)})`).join(" und ");
+      naechstesMass = { wandIndex: g[0], waende: g, kontrolle: true,
+        text: `Kontrollmaß: ${g.length > 1 ? "Bandmaße an" : "ein Bandmaß an"} ${liste} ${g.length > 1 ? "zeigen" : "zeigt"}, ob eine Ecke schief ist – das Ergebnis setzt bisher rechte Winkel voraus.` };
     }
   }
 
@@ -571,10 +583,10 @@ function richtungen(waende) {
 /**
  * Lücke vor dem Ausgleich in Vielfachen ihrer erwarteten Streuung (Mahalanobis).
  * Bei festen Richtungen entsteht sie nur aus Längenfehlern:
- * g = Σ e_i·u_i, also C_g = Σ_frei u_i C_ij u_jᵀ + Σ_fest (σ²_Band + ρ_j²) u_j u_jᵀ
- * (+ σ₀² je Achse für Ungenanntes). ρ_j: Das Zielrauschen einer Bandmaß-Wand
- * steckt über den Ausgleich von (h, r, δ) in den freien Wänden, ohne dass Q es
- * zeigt. Über 3 erklärt das Rauschen die Lücke nicht mehr.
+ * g = Σ e_i·u_i, also C_g = Σ_frei u_i C_ij u_jᵀ + Σ_fest σ²_Band u_j u_jᵀ
+ * (+ σ₀² je Achse für Ungenanntes). Das Zielrauschen der Bandmaß-Wände steckt
+ * schon in Q (ihr Residuum ist danach gewichtet) und damit in C – nicht noch
+ * einmal zählen. Über 3 erklärt das Rauschen die Lücke nicht mehr.
  */
 function lueckeInSigma(waende, fest, C, rausch) {
   const u = richtungen(waende), festSet = new Set(fest);
@@ -582,7 +594,7 @@ function lueckeInSigma(waende, fest, C, rausch) {
   waende.forEach((w, i) => { gx += w.laenge * u[i][0]; gy += w.laenge * u[i][1]; });
   let c00 = SIGMA_LUECKE_M ** 2, c01 = 0, c11 = SIGMA_LUECKE_M ** 2;
   for (let i = 0; i < waende.length; i++) for (let j = 0; j < waende.length; j++) {
-    const v = festSet.has(i) || festSet.has(j) ? (i === j ? SIGMA_BAND_M ** 2 + rausch[i] ** 2 : 0) : C[i][j];
+    const v = festSet.has(i) || festSet.has(j) ? (i === j ? SIGMA_BAND_M ** 2 : 0) : C[i][j];
     c00 += u[i][0] * v * u[j][0]; c01 += u[i][0] * v * u[j][1]; c11 += u[i][1] * v * u[j][1];
   }
   const det = c00 * c11 - c01 * c01;
@@ -605,9 +617,10 @@ function schiefsteEcke(roh, glatt) {
  *     verschieben, Winkel neu bestimmen, Ausgleich wiederholen);
  *   · Restunsicherheit von (h, r, δ) – sie verzerrt nahe und ferne Ecken
  *     unterschiedlich und damit die Winkel (entlang der Cholesky-Spalten von Q);
+ *   · ohne Schlussschuss die unbekannte Gier-Drift;
  *   · geglättete Ecken als Annahme mit SIGMA_RECHT_ANNAHME_GRAD.
  */
-function richtungsSigma(geo, vorher, fest, a, p, Q) {
+function richtungsSigma(geo, vorher, fest, a, p, Q, drift = 0) {
   const n = vorher.length;
   const ungeglaettet = vorher.map((w, i) => w.drehung === geo.roh[i].drehung);
   const basis = G.ausgleichen(vorher, fest).waende.map(w => w.laenge);
@@ -626,8 +639,10 @@ function richtungsSigma(geo, vorher, fest, a, p, Q) {
         zaehle(vorher.map((v, i) => (ungeglaettet[i] ? { ...v, drehung: roh[i].drehung } : v)));
       }
     });
-    for (const spalte of cholesky(Q)) {
-      const g = geometrie(a, { ...p, h: p.h + spalte[0], r: p.r + spalte[1], delta: p.delta + spalte[2] });
+    const spalten = cholesky(Q).map(c => ({ h: p.h + c[0], r: p.r + c[1], delta: p.delta + c[2] }));
+    if (drift) spalten.push({ omega: p.omega + drift });     // ohne Schlussschuss
+    for (const spalte of spalten) {
+      const g = geometrie(a, { ...p, ...spalte });
       if (!g || g.roh.length !== n) continue;
       zaehle(vorher.map((v, i) => (ungeglaettet[i] ? { ...v, drehung: g.roh[i].drehung } : v)));
     }
@@ -654,13 +669,14 @@ function cholesky(Q) {
   return [0, 1, 2].map(k => [L[0][k], L[1][k], L[2][k]]).filter(c => c.some(v => v !== 0 && Number.isFinite(v)));
 }
 
-/** Spannen die Wände `idx` beide Richtungen auf? (Dann schließt der Zug ohne Prüfung.) */
-function zweiRichtungen(waende, idx) {
-  const u = richtungen(waende);
-  let m00 = 0, m01 = 0, m11 = 0;
-  for (const i of idx) { m00 += u[i][0] ** 2; m01 += u[i][0] * u[i][1]; m11 += u[i][1] ** 2; }
-  const spur = m00 + m11;
-  return spur > 0 && m00 * m11 - m01 * m01 > 1e-2 * spur * spur;
+/** Freie Wände nach Richtung (bis 10° gleich, Gegenrichtung zählt mit) gruppieren. */
+function richtungsGruppen(waende, idx) {
+  const u = richtungen(waende), gruppen = [];
+  for (const i of idx) {
+    const g = gruppen.find(gr => Math.abs(u[gr[0]][0] * u[i][1] - u[gr[0]][1] * u[i][0]) < Math.sin(10 * Z.GRAD));
+    if (g) g.push(i); else gruppen.push([i]);
+  }
+  return gruppen;
 }
 
 /** ∂(Länge der Wand i)/∂[h, r, δ] – für die Fehlerfortpflanzung. */
