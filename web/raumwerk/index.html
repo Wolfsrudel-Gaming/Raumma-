@@ -40,13 +40,28 @@
       <button id="btnVarianteKlon" title="Aktive Variante kopieren">duplizieren</button>
       <button id="btnVarianteDel" title="Variante löschen">löschen</button>
       <span class="trenner"></span>
-      <button id="btnExport" title="Projekt als JSON sichern">Export</button>
-      <button id="btnImport" title="Projekt aus JSON laden">Import</button>
-      <button id="btnReport" class="haupt">Report (PDF)</button>
-      <button id="btnReset" title="Beispielprojekt zurücksetzen">Zurücksetzen</button>
+      <button id="btnExport" title="Projekt als JSON sichern oder teilen">Export</button>
+      <button id="btnImport" title="Projekt aus JSON laden (der aktuelle Stand wird vorher gesichert)">Import</button>
+      <div class="report-wahl">
+        <button id="btnReport" class="haupt" title="Bericht über alle Räume – drucken oder als PDF speichern">Report (PDF)</button>
+        <button id="btnReportMenue" class="haupt report-pfeil" title="Weitere Report-Optionen" aria-label="Weitere Report-Optionen" aria-haspopup="true" aria-expanded="false">▾</button>
+        <div id="reportMenue" class="menue" hidden>
+          <button id="btnReportAlle">Alle Räume</button>
+          <button id="btnReportRaum">Nur aktiver Raum</button>
+        </div>
+      </div>
+      <span class="trenner"></span>
+      <button id="btnNeu" title="Neues, leeres Projekt (der aktuelle Stand wird vorher gesichert)">Neues Projekt</button>
+      <button id="btnReset" title="Beispielprojekt laden (der aktuelle Stand wird vorher gesichert)">Zurücksetzen</button>
       <input id="fileImport" type="file" accept="application/json,.json" hidden>
     </div>
   </header>
+
+  <!-- Bleibt stehen, solange der Browser-Speicher nichts mehr annimmt. -->
+  <div id="speicherBanner" class="speicher-banner" role="alert" hidden>
+    <span><b>Nicht gespeichert:</b> Der Browser-Speicher ist voll (viele Fotos?). Der Stand lebt nur noch in diesem Fenster – bitte jetzt exportieren.</span>
+    <button id="bannerExport" class="haupt">Jetzt exportieren</button>
+  </div>
 
   <main class="raster">
     <!-- Linke Spalte: Erfassung & Palette -->
@@ -95,10 +110,14 @@
     <!-- Mitte: Grundriss -->
     <section class="plan-wrap">
       <div class="plan-toolbar">
-        <div class="werkzeuge" id="panelWerkzeuge"></div>
+        <div class="toolbar-links">
+          <div class="werkzeuge" id="panelWerkzeuge"></div>
+          <button id="btnFlaecheZu" class="haupt" hidden title="Die gemessene Fläche schließen (wie Doppelklick)">Fläche schließen</button>
+        </div>
         <div class="toolbar-rechts">
           <span id="messErgebnis" class="mess-ergebnis"></span>
-          <button id="btnScan" title="Geführte Raumaufnahme (Referenzwürfel + Sensorik)">Scan</button>
+          <button id="btnAufnehmen" class="haupt" title="Aktiven Raum aufnehmen – zielen, Maßband oder Rechteck (ohne Würfel)">Raum aufnehmen</button>
+          <button id="btnScan" title="Foto-Scan für die Punktwolke (mit Referenzwürfel)">Scan</button>
           <button id="btnAR" title="AR-Besprechung vor Ort (Kamera)">AR</button>
           <button id="btnEinpassen" title="Ansicht einpassen">einpassen</button>
         </div>
@@ -107,6 +126,7 @@
       <svg id="gebaeude" class="plan" hidden></svg>
       <div id="modell3d" class="modell3d" hidden></div>
       <div id="wolke3d" class="modell3d" hidden></div>
+      <div id="hinweisBox" class="hinweis-box" role="status" aria-live="polite" hidden></div>
       <div class="plan-fuss" id="statusZeile"></div>
     </section>
 

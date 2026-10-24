@@ -1,7 +1,8 @@
 name: CI
 
-# Hält alle drei Ebenen grün: den Kotlin-Kern, die Verarbeitungs-Pipeline und
-# die JS-Spiegel im Browser-Teil.
+# Hält alle Ebenen grün: den Kotlin-Kern, die Verarbeitungs-Pipeline, die
+# JS-Spiegel im Browser-Teil und – Ende zu Ende im echten Browser – den
+# Feld-Ablauf „Raum aufnehmen ohne Würfel“.
 on:
   push:
   pull_request:
@@ -35,7 +36,7 @@ jobs:
         run: python -m unittest discover -s tests -t .
 
   javascript:
-    name: JS-Spiegel (Syntax + Parität)
+    name: JS-Spiegel (Syntax + Parität + Aufmaß)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,11 +44,37 @@ jobs:
         with:
           node-version: "20"
       - name: Syntaxprüfung aller Module
+        # „node --check datei.js“ prüft ES-Module NICHT (es meldet auch kaputte
+        # Module als gültig). Module daher über stdin als ES-Modul prüfen,
+        # klassische Skripte (native.js, sw.js …) wie gehabt.
         run: |
-          for f in web/*.js web/raumwerk/*.js web/aufnahme/*.js; do
-            node --check "$f"
+          set -e
+          for f in web/*.js web/raumwerk/*.js web/raumwerk/mobil/*.js web/aufnahme/*.js; do
+            if grep -qE '^\s*(import|export)\b' "$f"; then
+              node --input-type=module --check < "$f" || { echo "Syntaxfehler: $f"; exit 1; }
+            else
+              node --check "$f"
+            fi
           done
-      - name: Paritäts- und Geometrietests
+      - name: Paritäts-, Geometrie- und Aufmaßtests
         run: |
-          node web/tests/pruefung.test.mjs
-          node web/tests/verbindung.test.mjs
+          set -e
+          for t in web/tests/*.test.mjs; do
+            echo "== $t"
+            node "$t"
+          done
+
+  e2e:
+    name: Ende-zu-Ende (Playwright, Handy-Ablauf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Playwright + Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Raum aufnehmen, nachmessen, Report
+        run: node web/tests/e2e/feld.e2e.mjs

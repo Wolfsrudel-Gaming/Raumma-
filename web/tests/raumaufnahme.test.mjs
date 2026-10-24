@@ -119,6 +119,11 @@ nah("Lampe relX", lampe.relX, lq[0] / 5, 0.015);
 nah("Lampe relY", lampe.relY, lq[1] / 4, 0.015);
 wahr("Umriss ohne Prüfhinweise", G.pruefen(r.punkte).length === 0, G.pruefen(r.punkte).join(" | "));
 
+// Ohne Kalibrierung sagt die App die Höhen-Unsicherheit ehrlich an.
+wahr(`Höhen-Unsicherheit ausgewiesen (± ${(r.sigmaHoeheM * 100).toFixed(1)} cm)`, r.sigmaHoeheM > 0.01 && r.sigmaHoeheM < 0.1);
+nah("Höhenfehler innerhalb 2σ", Math.abs(r.einbauten.find(e => e.id === "e2").hoeheM - 1.05), 0, 2 * r.sigmaHoeheM + 0.01);
+wahr("kalibriert: kleinere Höhen-Unsicherheit", A.rekonstruiere({ ...a, neigungsfehlerGrad: 0.5 }).sigmaHoeheM < r.sigmaHoeheM);
+
 // Mit Wende-Kalibrierung (δ bekannt) oder Laser-Raumhöhe sitzen auch die Höhen.
 // (Laser-Raumhöhe hält Boden und Decke fest; Höhen in Augenhöhe bleiben ±2–3 cm.)
 for (const [name, extra, tolMitte] of [["kalibriert", { neigungsfehlerGrad: 0.5 }, 0.012], ["Laser-Raumhöhe", { raumhoeheM: H }, 0.03]]) {

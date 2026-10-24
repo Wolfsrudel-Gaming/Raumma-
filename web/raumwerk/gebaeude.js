@@ -65,23 +65,26 @@ export class Gebaeude {
     const teile = [this._raster()];
     for (const r of rr) {
       const aktiv = r.id === this.modell.aktivId;
-      const pts = this.ecken(r).map(p => this.nachSchirm(p[0], p[1]));
+      const welt = this.ecken(r);
+      const pts = welt.map(p => this.nachSchirm(p[0], p[1]));
       const poly = pts.map(p => p.join(",")).join(" ");
-      const mitte = this.nachSchirm(Number(r.xM) + G.breite(r) / 2, Number(r.yM) + G.tiefe(r) / 2);
+      const m = beschriftungsPunkt(welt);
+      const mitte = m ? this.nachSchirm(m[0], m[1]) : this.nachSchirm(Number(r.xM) + G.breite(r) / 2, Number(r.yM) + G.tiefe(r) / 2);
       const flaeche = G.flaeche(r).toFixed(1);
-      teile.push(`<g class="graum ${aktiv ? "aktiv" : ""}" data-raum="${r.id}">
-        <polygon points="${poly}" fill="${r.farbe || "#cfe8e9"}"/>
+      teile.push(`<g class="graum ${aktiv ? "aktiv" : ""}" data-raum="${esc(r.id)}">
+        <polygon points="${poly}" fill="${farbe(r.farbe)}"/>
         <text class="graum-name" x="${mitte[0]}" y="${mitte[1] - 4}" text-anchor="middle">${esc(r.name)}${r.nummer ? ` · ${esc(r.nummer)}` : ""}</text>
         <text class="graum-mass" x="${mitte[0]}" y="${mitte[1] + 12}" text-anchor="middle">${flaeche} m²</text>
       </g>`);
     }
     for (const t of this.modell.tueren) {
       const a = this.nachSchirm(t.cx, t.cy);
-      const halb = (t.breiteM / 2) * this.scale;
-      // Ein helles Stück quer über die gemeinsame Wand = die Öffnung.
-      const [x1, y1, x2, y2] = t.senkrecht
-        ? [a[0], a[1] - halb, a[0], a[1] + halb]
-        : [a[0] - halb, a[1], a[0] + halb, a[1]];
+      const halb = (Number(t.breiteM) / 2) * this.scale;
+      if (!isFinite(a[0]) || !isFinite(a[1]) || !isFinite(halb)) continue;
+      // Ein helles Stück entlang der gemeinsamen Wand = die Öffnung (auch an
+      // schrägen Wänden: Richtung kommt aus der Verbindung).
+      const [ux, uy] = Array.isArray(t.richtung) ? t.richtung : (t.senkrecht ? [0, 1] : [1, 0]);
+      const [x1, y1, x2, y2] = [a[0] - ux * halb, a[1] - uy * halb, a[0] + ux * halb, a[1] + uy * halb];
       teile.push(`<g class="gtuer">`
         + `<line class="gtuer-lueck" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`
         + `<circle class="gtuer-punkt" cx="${a[0]}" cy="${a[1]}" r="3.5"/></g>`);
@@ -145,4 +148,29 @@ export class Gebaeude {
   }
 }
 
-const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/**
+ * Wohin der Raumname gehört: Flächenschwerpunkt des Umrisses – bei L-Räumen
+ * liegt die Mitte des Kastens sonst auf der Wand. Liegt der Schwerpunkt
+ * außerhalb (stark verwinkelte Räume), null → Kastenmitte.
+ */
+function beschriftungsPunkt(p) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < p.length; i++) {
+    const [x0, y0] = p[i], [x1, y1] = p[(i + 1) % p.length];
+    const k = x0 * y1 - x1 * y0;
+    a += k; cx += (x0 + x1) * k; cy += (y0 + y1) * k;
+  }
+  if (!isFinite(a) || Math.abs(a) < 1e-9) return null;
+  const s = [cx / (3 * a), cy / (3 * a)];
+  let drin = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    if ((p[i][1] > s[1]) !== (p[j][1] > s[1]) &&
+      s[0] < (p[j][0] - p[i][0]) * (s[1] - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) drin = !drin;
+  }
+  return drin ? s : null;
+}
+
+/** Nur echte Farbwerte ins SVG – alles andere (z. B. aus einem Import) wird Standard. */
+const farbe = f => (typeof f === "string" && /^#[0-9a-fA-F]{3,8}$/.test(f) ? f : "#cfe8e9");

@@ -534,7 +534,7 @@ export function starteAssistent(opts) {
             : r.kalibriert ? `<b>Maßstab gesetzt</b>, aber noch nicht überall zentimetergenau.`
               : `<b>Form stimmt, Maßstab fehlt.</b> Ein bekanntes Maß genügt: eine Wand mit dem Bandmaß, die Raumhöhe (Laser nach oben) oder die Höhe einer Tür (Norm-Innentür lichte Höhe ≈ 1,97 m).`}
           ${r.naechstesMass ? `<br><span class="as-tipp">→ ${esc(r.naechstesMass.text)}</span>` : ""}
-          <br><small>Ausgeglichen: Kamerahöhe ${komma(r.kamerahoeheM, 2)} m · Handy ${Math.round(r.armM * 100)} cm vor der Drehachse${a.neigungsfehlerGrad != null ? ` · Neigung kalibriert` : ""}</small>
+          <br><small>Ausgeglichen: Kamerahöhe ${komma(r.kamerahoeheM, 2)} m · Handy ${Math.round(r.armM * 100)} cm vor der Drehachse · Höhen ± ${Math.max(1, Math.round(r.sigmaHoeheM * 100))} cm${a.neigungsfehlerGrad != null ? ` · Neigung kalibriert` : ""}</small>
         </div>
         <h3 class="as-h3">Wände <small>Bandmaß eintragen, wo du nachmisst</small></h3>
         <div class="as-zeilen">${r.waende.map((w, i) => `

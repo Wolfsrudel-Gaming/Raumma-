@@ -50,13 +50,13 @@
             <button data-modus="messen-strecke">Messen</button>
             <button data-modus="messen-flaeche">Fläche</button>
           </div>
+          <button class="plan-chip" id="planFlaecheZu" hidden>Fläche schließen</button>
           <button class="plan-rund" id="planEinpassen" aria-label="Einpassen">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
           </button>
         </div>
         <div class="plan-flaeche" id="planFlaeche">
           <svg id="planSvg"></svg>
-          <div class="plan-toast" id="planToast"></div>
         </div>
         <button class="fab" id="fabPalette">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -94,5 +94,12 @@
   </div>
 
   <script type="module" src="mobil.js"></script>
+  <script>
+    // Im Browser als PWA offline-fähig machen. In der Android-App NICHT: dort
+    // liefert der Asset-Loader die Dateien, ein Service Worker würde ihn umgehen.
+    if ("serviceWorker" in navigator && !window.AndroidNative) {
+      navigator.serviceWorker.register("../sw.js").catch(function () {});
+    }
+  </script>
 </body>
 </html>

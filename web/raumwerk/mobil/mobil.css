@@ -277,13 +277,15 @@ button { cursor: pointer; border: none; background: none; }
 /* Plan-Zeichnung im Ziegelwerk-Ton */
 .plan-flaeche .raster line { stroke: var(--line); stroke-width: 1; opacity: .55; }
 .plan-flaeche .boden { fill: var(--card); }
-.plan-flaeche .wand line { stroke: var(--anthrazit); stroke-width: 5; }
+.plan-flaeche .wand line { stroke: var(--ink); stroke-width: 5; }
 .plan-flaeche .wandnr-kreis { fill: var(--card); stroke: var(--ziegel); stroke-width: 1.5; }
 .plan-flaeche .wandnr { fill: var(--ziegel); font: 600 12px "IBM Plex Mono", monospace; text-anchor: middle; }
 .plan-flaeche .klotz-box { fill: var(--sand); stroke: var(--fuge); stroke-width: 1.5; }
 .plan-flaeche .klotz.aktiv .klotz-box { fill: #E8C9A6; stroke: var(--ziegel); stroke-width: 2.5; }
 .plan-flaeche .klotz-front { stroke: var(--anthrazit); stroke-width: 2; }
-.plan-flaeche .klotz-text { fill: var(--ink); font: 500 11px "Source Sans 3", sans-serif; text-anchor: middle; }
+.plan-flaeche .klotz-text { fill: var(--anthrazit); font: 500 11px "Source Sans 3", sans-serif; text-anchor: middle; }
+.plan-flaeche .mass-linie { stroke: var(--sub); }
+.plan-flaeche .mass-text { fill: var(--ink); stroke: var(--chip); stroke-width: 3px; paint-order: stroke; }
 .plan-flaeche .einbau-sym { fill: var(--ziegel); stroke: var(--ziegel-tief); }
 .plan-flaeche .einbau.aktiv .einbau-sym { fill: var(--signal); stroke: #8a6413; }
 .plan-flaeche .einbau-text { fill: var(--sub); font: 500 10px "IBM Plex Mono", monospace; text-anchor: middle; }
@@ -573,3 +575,46 @@ button { cursor: pointer; border: none; background: none; }
   .scan-fuehrung { gap: 8px; }
   .scan-galerie { display: none; }
 }
+
+/* ==================================================================
+   Aufmaß, Wände, Fotos, Toast, Joystick (v0.4)
+   ================================================================== */
+.toast {
+  position: fixed; left: 50%; bottom: calc(96px + var(--sab)); transform: translateX(-50%);
+  background: var(--anthrazit); color: var(--kalk); padding: 11px 15px; border-radius: 2px; z-index: 9500;
+  font: 500 13px/1.35 "IBM Plex Mono", ui-monospace, monospace; opacity: 0; transition: opacity .2s;
+  pointer-events: none; max-width: 92vw; text-align: center; box-shadow: 0 3px 0 rgba(0, 0, 0, .3);
+}
+.toast.zeig { opacity: 1; }
+.plan-chip {
+  flex: 0 0 auto; min-height: 48px; padding: 0 12px; border-radius: 2px;
+  background: var(--ziegel); color: #F6EFE4; font: 600 13px "Source Sans 3", sans-serif;
+  box-shadow: 0 3px 0 var(--ziegel-tief);
+}
+.plan-chip[hidden] { display: none; }
+.aufmass-karte { margin-top: 16px; border-left: 5px solid var(--ziegel); }
+.masszeile { display: flex; gap: 6px; margin-bottom: 10px; }
+.masszeile span { flex: 1; background: var(--card); border: 1.5px solid var(--line); border-radius: 2px;
+  padding: 8px 9px; font-size: 11.5px; color: var(--sub); }
+.masszeile b { display: block; font: 600 16px/1.2 "IBM Plex Mono", ui-monospace, monospace; color: var(--ink); }
+.wand-stein { padding: 8px 10px; }
+.wand-nr { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid var(--ziegel); color: var(--ziegel); font: 600 12px "IBM Plex Mono", ui-monospace, monospace; }
+.wand-laenge { font: 600 16px "IBM Plex Mono", ui-monospace, monospace; color: var(--ink); }
+.wand-herkunft { font: 600 9.5px/1.2 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .06em; color: var(--sub); }
+.wand-herkunft.band { color: var(--ok-fg); }
+.wand-herkunft.gezielt { color: var(--pruef-fg); }
+.wand-stein input {
+  flex: 0 0 104px; width: 104px; min-height: 44px; padding: 0 10px; border-radius: 2px;
+  border: 1.5px solid var(--line); background: var(--bg); color: var(--ink);
+  font: 600 15px "IBM Plex Mono", ui-monospace, monospace;
+}
+.feld input.falsch, .wand-stein input.falsch { border-color: var(--ziegel); background: var(--stoss-bg); color: var(--stoss-fg); }
+.feld textarea.notiz { width: 100%; min-height: 84px; padding: 10px 13px; border: 1.5px solid var(--line); border-radius: 2px;
+  background: var(--card); color: var(--ink); font: inherit; resize: vertical; }
+.foto-gross { display: block; width: 100%; max-height: 52vh; object-fit: contain; background: #111; border-radius: 2px; margin-bottom: 12px; }
+.foto-karte { display: block; }
+.joystick { position: absolute; left: 20px; bottom: calc(24px + var(--sab)); width: 116px; height: 116px; border-radius: 50%;
+  background: rgba(241, 233, 221, .14); border: 2px solid rgba(241, 233, 221, .45); touch-action: none; z-index: 5; }
+.joystick-knopf { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+  background: var(--ziegel); box-shadow: 0 3px 0 var(--ziegel-tief); pointer-events: none; }

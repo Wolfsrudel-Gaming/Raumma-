@@ -277,6 +277,7 @@ const summeQ = r => r.reduce((s, v) => s + v * v, 0);
  *   kamerahoeheM, armM, neigungsfehlerGrad – ausgeglichene Haltung
  *   skala                – Kamerahöhe ausgeglichen / angenommen
  *   kalibriert, klasse   – gibt es einen Maßstab? SKIZZE | PLAN | AUFMASS
+ *   sigmaHoeheM          – Unsicherheit gezielter Höhen (1σ)
  *   naechstesMass        – { wandIndex, text } – was jetzt am meisten bringt
  *   oeffnungen[], einbauten[] – im Datenmodell des Kerns (ohne raumId)
  *   restlueckeM          – Lücke vor dem Ausgleich (Qualitätsaussage)
@@ -370,6 +371,11 @@ export function rekonstruiere(a, optionen = {}) {
     };
   });
   const maxSigma = Math.max(...wl.map(w => w.sigmaM));
+  // Höhen (Steckdosen, Brüstungen, Raumhöhe) hängen direkt an der Linsenhöhe –
+  // deren Restunsicherheit ist die ehrliche Höhenangabe.
+  const sigmaHoeheM = lsg.Q ? Math.sqrt(Math.max(0, lsg.Q[0][0]) + (0.005) ** 2) : start.sig.h;
+  if (sigmaHoeheM > 0.02)
+    hinweise.push(`Höhen ± ${Math.round(sigmaHoeheM * 100)} cm – für genaue Höhen die Neigung einmal kalibrieren oder die Raumhöhe (Laser) eintragen.`);
   const klasse = maxSigma <= 0.05 ? "AUFMASS" : maxSigma <= 0.15 ? "PLAN" : "SKIZZE";
   const offen = wl.map((w, i) => [i, w]).filter(([, w]) => w.quelle !== "band");
   let naechstesMass = null;
@@ -436,7 +442,7 @@ export function rekonstruiere(a, optionen = {}) {
   return {
     punkte, umriss: G.umrissSchreiben(punkte), waende: wl, hoeheM,
     kamerahoeheM: runde(kamerahoeheM, 3), armM: runde(p.r, 3), neigungsfehlerGrad: runde(p.delta / Z.GRAD, 2),
-    skala, kalibriert: referenzen > 0, klasse, naechstesMass, oeffnungen, einbauten,
+    skala, kalibriert: referenzen > 0, klasse, naechstesMass, sigmaHoeheM, oeffnungen, einbauten,
     restlueckeM: aus.restlueckeVorher, restlueckeNachherM: aus.restlueckeNachher,
     flaecheM2: G.flaechePunkte(punkte), hinweise
   };
