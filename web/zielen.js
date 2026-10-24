@@ -36,6 +36,20 @@ export const GRAD = Math.PI / 180;
 /** Kleinste Neigung unter den Horizont, ab der ein Bodenpunkt noch Sinn ergibt. */
 export const MIN_NEIGUNG_GRAD = 4;
 
+/**
+ * Sinnvoller Bereich für einen gezielten Bodenpunkt: flacher als 12° wird die
+ * Entfernung (> ~6 m) zu ungenau; steiler als 75° steht man fast auf der
+ * Ecke – dann ist unklar, ob die Linse vor oder hinter ihr sitzt. Die
+ * Oberfläche lehnt Schüsse außerhalb ab („näher ran“ / „Schritt zurück“).
+ */
+export const ZIEL_MIN_GRAD = 12, ZIEL_MAX_GRAD = 75;
+
+/** Liegt die Neigung eines Bodenschusses im sinnvollen Bereich? → "ok" | "flach" | "steil". */
+export function zielBereich(v, p = {}) {
+  const th = neigungGrad(v) - (p.delta || 0) / GRAD;
+  return th < ZIEL_MIN_GRAD ? "flach" : th > ZIEL_MAX_GRAD ? "steil" : "ok";
+}
+
 // ------------------------------------------------------------ Blickrichtung
 
 /**
@@ -205,6 +219,125 @@ export function unsicherheitBoden(v, h, sigmaGrad = 0.4) {
   const radial = h / (Math.sin(b) ** 2) * s;
   const seitlich = (h / Math.tan(b)) * s;
   return Math.hypot(radial, seitlich);
+}
+
+// ------------------------------------------------- Kameramodell (Haltung)
+
+/**
+ * Wo die Kamera beim Zielen wirklich sitzt – das einfache Modell oben nimmt
+ * an, sie sitze genau auf der Drehachse. Tatsächlich dreht man sich um die
+ * eigene Körperachse (Standpunkt S), das Handy ist dabei r ≈ 20–45 cm vor der
+ * Achse, und die Linse sitzt L über dem Drehpunkt der Hand (bzw. des
+ * Stativkopfs). Kippt das Handy um θ nach unten, wandert die Linse um L·sinθ
+ * nach vorn und L·(1−cosθ) nach unten:
+ *
+ *     a = r + L·sinθ'      z = h + L·cosθ'      ρ_Boden = a + z·cot θ'
+ *
+ * θ' = θ − δ ist die um den festen Neigungsfehler δ des Geräts bereinigte
+ * Neigung (Beschleunigungssensor, leicht schräges Kameramodul), ψ' = ψ − ω·(t−t0)
+ * die um das langsame Weglaufen ω der Gier bereinigte Richtung.
+ *
+ * Ohne diese Terme liegen gezielte Ecken um r zu nah am Standpunkt – in der
+ * Simulation 36–47 cm Wandfehler ohne Bandmaß. Mit ihnen (h, r, δ geschätzt,
+ * siehe raumaufnahme.js) bleiben mit einem Bandmaß ~2–3 cm.
+ *
+ * Parameter p = { h, r, L, delta (rad), omega (rad/ms), t0 (ms), stand: [x, y] }.
+ * Mit r = L = δ = ω = 0 ergeben die Funktionen exakt das einfache Modell.
+ */
+export const HALTUNG = {
+  /** Handy vor der Brust, man dreht sich auf der Stelle. */
+  hand: { r: 0.30, sigR: 0.10, L: 0.08, sigH: 0.08 },
+  /** Handy-Halter auf dem (Kreuzlinienlaser-)Stativ: kein Arm, Höhe gemessen. */
+  stativ: { r: 0.0, sigR: 0.01, L: 0.10, sigH: 0.005 }
+};
+
+/** Blick nach Abzug von Neigungsfehler und Gier-Drift: { th (rad, unten +), psi, v }. */
+export function korrigiert(v, p = {}, t) {
+  const th = Math.asin(Math.max(-1, Math.min(1, -v[2]))) - (p.delta || 0);
+  const dt = p.omega ? (Number(t ?? p.t0 ?? 0) - Number(p.t0 || 0)) : 0;
+  const psi = Math.atan2(v[0], v[1]) - (p.omega || 0) * dt;
+  return { th, psi, v: [Math.sin(psi) * Math.cos(th), Math.cos(psi) * Math.cos(th), -Math.sin(th)] };
+}
+
+/** Lage der Linse: a vor der Achse, Höhe z, Richtung u, Ursprung o = [x, y, z]. */
+export function kamera(v, p, t) {
+  const k = korrigiert(v, p, t);
+  const L = p.L || 0;
+  const a = (p.r || 0) + L * Math.sin(k.th);
+  const z = p.h + L * Math.cos(k.th);
+  const u = [Math.sin(k.psi), Math.cos(k.psi)];
+  const s = p.stand || [0, 0];
+  return { a, z, th: k.th, psi: k.psi, u, v: k.v, o: [s[0] + a * u[0], s[1] + a * u[1], z] };
+}
+
+/** Bodenpunkt im Kameramodell, oder `null` bei zu flachem Strahl. d = Abstand zur Achse. */
+export function bodenpunktM(v, p, t) {
+  const k = kamera(v, p, t);
+  if (k.th < MIN_NEIGUNG_GRAD * GRAD) return null;
+  const rho = k.a + k.z / Math.tan(k.th);
+  const s = p.stand || [0, 0];
+  return { x: s[0] + rho * k.u[0], y: s[1] + rho * k.u[1], d: rho };
+}
+
+/** Deckenpunkt (Höhe H über dem Boden) im Kameramodell, oder `null`. */
+export function deckenpunktM(v, p, H, t) {
+  const k = kamera(v, p, t);
+  const g = -k.th;
+  if (g < MIN_NEIGUNG_GRAD * GRAD || !(H > k.z)) return null;
+  const rho = k.a + (H - k.z) / Math.tan(g);
+  const s = p.stand || [0, 0];
+  return { x: s[0] + rho * k.u[0], y: s[1] + rho * k.u[1], d: rho };
+}
+
+/** Schnitt mit der Wandebene a→b – der Strahl beginnt an der Linse, nicht an der Achse. */
+export function wandpunktM(v, p, a, b, t) {
+  const k = kamera(v, p, t);
+  return wandpunkt(k.v, k.z, a, b, [k.o[0], k.o[1]]);
+}
+
+/** Erste getroffene Wand eines Vielecks im Kameramodell (wie `ersteWand`). */
+export function ersteWandM(v, p, ecken, t) {
+  let beste = null;
+  for (let i = 0; i < ecken.length; i++) {
+    const w = wandpunktM(v, p, ecken[i], ecken[(i + 1) % ecken.length], t);
+    if (!w || w.abstand < -0.02 || w.abstand > w.laenge + 0.02) continue;
+    if (!beste || w.t < beste.t) beste = { ...w, index: i };
+  }
+  return beste;
+}
+
+/**
+ * Höhe des oberen Punkts einer senkrechten Kante, deren Fuß auf dem Boden
+ * angezielt wurde (Raumecke → Deckenkante, Türzarge → Sturz).
+ */
+export function kantenhoeheM(vUnten, vOben, p, tUnten, tOben) {
+  const u = bodenpunktM(vUnten, p, tUnten);
+  if (!u) return null;
+  const k = kamera(vOben, p, tOben);
+  return k.z + (u.d - k.a) * Math.tan(-k.th);
+}
+
+/**
+ * Neigungsfehler δ des Geräts aus der Wende-Kalibrierung: dasselbe Ziel
+ * einmal normal und einmal mit dem Handy um 180° um die Kameraachse gedreht
+ * (auf dem Kopf) anzielen. Der Fehler wechselt dabei das Vorzeichen, das Ziel
+ * nicht: δ = (θ₁ − θ₂)/2. Ergebnis in Grad.
+ */
+export function neigungsfehlerGrad(vNormal, vGewendet) {
+  return (neigungGrad(vNormal) - neigungGrad(vGewendet)) / 2;
+}
+
+/**
+ * Gier-Drift aus dem Schlussschuss: am Ende noch einmal auf die erste Ecke
+ * zielen. ω = (ψ_Schluss − ψ_erste) / (t_Schluss − t_erste) in rad/ms.
+ */
+export function gierDrift(vErste, tErste, vSchluss, tSchluss) {
+  const dt = Number(tSchluss) - Number(tErste);
+  if (!(dt > 0)) return 0;
+  let d = Math.atan2(vSchluss[0], vSchluss[1]) - Math.atan2(vErste[0], vErste[1]);
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  return d / dt;
 }
 
 // ------------------------------------------------------- Welt → Raumsystem

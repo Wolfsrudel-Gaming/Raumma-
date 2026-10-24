@@ -44,7 +44,7 @@ export function uebernehmen(projekt, raumId, e, neueId) {
   raum.aufmass = {
     methode: e.methode, datum: e.datum || new Date().toISOString(),
     waende: (e.waende || []).map(w => ({ quelle: w.quelle || Quelle.GETIPPT, sigmaM: w.sigmaM ?? null })),
-    kamerahoeheM: e.kamerahoeheM ?? null, kalibriert: e.kalibriert ?? null
+    kamerahoeheM: e.kamerahoeheM ?? null, kalibriert: e.kalibriert ?? null, klasse: e.klasse ?? null
   };
   raum.aufnahme = e.aufnahme || null;
 
@@ -98,7 +98,7 @@ export function nachmessen(projekt, raumId, wandIndex, laengeM, neueId) {
     // damit Bezeichnungen und Zuordnungen erhalten bleiben.
     uebernehmen(projekt, raumId, {
       methode: "zielen", umriss: r.umriss, hoeheM: r.hoeheM, waende: r.waende,
-      kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, aufnahme: a,
+      kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse, aufnahme: a,
       oeffnungen: r.oeffnungen.map(o => ({ ...vorher(projekt.oeffnungen, o.id), ...o })),
       einbauten: r.einbauten.map(x => ({ ...vorher(projekt.einbauten, x.id), ...x, hoeheM: x.hoeheM ?? vorher(projekt.einbauten, x.id).hoeheM ?? null }))
     }, neueId);

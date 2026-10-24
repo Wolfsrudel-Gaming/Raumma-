@@ -53,7 +53,8 @@ export function starteAssistent(opts) {
     ziel: "boden",
     oeffArt: "TUER", oeffTeil: null,
     einbauArt: "STECKDOSE",
-    hoeheTeil: null,
+    hoeheTeil: null,      // { v, t } – erster Schuss der Raumhöhe
+    kalibTeil: null,      // { v } – erster Schuss der Wende-Kalibrierung
     puffer: [],
     letzteLage: 0,
     band: { waende: startWaende(raum), hoeheM: zahlOder(raum.hoeheM, 2.5), ausgleich: false },
@@ -108,6 +109,8 @@ export function starteAssistent(opts) {
   function vorbereitung() {
     const h = gespeicherteHoehe();
     const roh = (Number(raum.aufbauM) || 0) > 0;
+    const haltung = gespeicherteHaltung();
+    const geraet = geraetKalibrierung();
     wurzel.className = "as-wurzel as-hell";
     wurzel.innerHTML = `
       <div class="as-blatt">
@@ -119,16 +122,30 @@ export function starteAssistent(opts) {
           <li>Halte das Handy hochkant vor die Brust, <b>bleib auf der Stelle stehen</b> und dreh dich nur.</li>
           <li>Fadenkreuz auf eine Bodenecke, ruhig halten, auslösen${nat && nat.app ? " (auch mit der <b>Lautstärketaste</b>)" : ""}. Reihum alle Ecken.</li>
         </ol>
-        <div class="as-feld"><label for="asH">Kamerahöhe über dem Boden (m)</label>
+        <div class="as-segment" id="asHaltung">
+          <button data-haltung="hand" class="${haltung === "hand" ? "an" : ""}">Freihand</button>
+          <button data-haltung="stativ" class="${haltung === "stativ" ? "an" : ""}">Stativ / Handy-Halter</button>
+        </div>
+        <div class="as-feld"><label for="asH" id="asHLabel">${haltung === "stativ" ? "Höhe der Kameralinse am Stativ (m) – gemessen" : "Kamerahöhe, Handy senkrecht vor der Brust (m)"}</label>
           <input id="asH" inputmode="decimal" value="${komma(h)}">
-          <small>Schätzung reicht: Ein Bandmaß, die Raumhöhe oder eine Türhöhe korrigiert sie später exakt.</small></div>
+          <small id="asHHinweis">${haltung === "stativ" ? "Einmal mit dem Zollstock messen – dann braucht es oft gar kein Bandmaß mehr." : "Schätzung reicht: Ein Bandmaß, die Raumhöhe oder eine Türhöhe setzt den Maßstab. Dass das Handy vor dem Körper sitzt, rechnet die App heraus."}</small></div>
+        <div class="as-kalib ${geraet ? "ok" : ""}">
+          <span>${geraet ? `✓ Neigung kalibriert (${komma(geraet.neigungsfehlerGrad, 2)}°, ${new Date(geraet.datum).toLocaleDateString("de-DE")})` : "Neigung nicht kalibriert – kostet ~2–3 cm bei Höhen."}</span>
+          <button class="as-link" id="asKalib">${geraet ? "neu kalibrieren" : "Jetzt kalibrieren (30 s)"}</button>
+        </div>
         ${roh ? `<label class="as-schalter"><input type="checkbox" id="asRoh" checked> <span>Estrich fehlt noch – ich ziele auf den <b>Rohboden</b> (Aufbau ${Math.round(Number(raum.aufbauM) * 1000)} mm wird abgezogen)</span></label>` : ""}
         <label class="as-schalter"><input type="checkbox" id="asRecht" checked> <span>Raum ist rechtwinklig (Ecken auf 90° glätten)</span></label>
         <button class="as-haupt" id="asLos">Kamera starten</button>
         <p class="as-fein">Braucht Kamera und Lagesensor. Ohne Sensor: zurück und „Maßband“ wählen.</p>
       </div>`;
     wurzel.querySelector(".as-zu").onclick = () => zeige("start");
-    wurzel.querySelector("#asLos").onclick = () => {
+    wurzel.querySelectorAll("[data-haltung]").forEach(b => b.onclick = () => {
+      try { localStorage.setItem(SCHLUESSEL_HALTUNG, b.dataset.haltung); } catch (_) {}
+      const hm = zahl(wurzel.querySelector("#asH").value);
+      if (hm > 0.3 && hm < 2.5) try { localStorage.setItem(SCHLUESSEL_HOEHE, String(hm)); } catch (_) {}
+      vorbereitung();
+    });
+    const uebernehmenUndLos = phase => {
       const hm = zahl(wurzel.querySelector("#asH").value);
       const hh = hm > 0.3 && hm < 2.5 ? hm : 1.4;
       try { localStorage.setItem(SCHLUESSEL_HOEHE, String(hh)); } catch (_) {}
@@ -136,12 +153,17 @@ export function starteAssistent(opts) {
       // Eine laufende Aufnahme (zurück aus „Prüfen“) nicht verwerfen.
       if (!st.a) st.a = A.neueAufnahme(hh, bodenRoh ? "roh" : "fertig");
       st.a.kamerahoeheM = hh;
+      st.a.haltung = gespeicherteHaltung();
+      st.a.neigungsfehlerGrad = geraetKalibrierung()?.neigungsfehlerGrad ?? null;
       st.a.boden = bodenRoh ? "roh" : "fertig";
       st.a.rechtwinklig = !!wurzel.querySelector("#asRecht")?.checked;
+      if (phase) { st.vorKalib = st.phase; st.phase = phase; st.kalibTeil = null; }
       // In der Nutzergeste starten: iOS fragt sonst nicht nach dem Lagesensor.
       lageAn(); kameraAn();
       zeige("zielen");
     };
+    wurzel.querySelector("#asLos").onclick = () => uebernehmenUndLos(null);
+    wurzel.querySelector("#asKalib").onclick = () => uebernehmenUndLos("kalib");
   }
 
   // ============================================================ Zielen
@@ -224,6 +246,19 @@ export function starteAssistent(opts) {
   function phaseInfo() {
     const a = st.a, n = a.ecken.length;
     switch (st.phase) {
+      case "kalib": return {
+        krume: "NEIGUNG KALIBRIEREN · EINMAL JE GERÄT",
+        titel: st.kalibTeil ? "Handy auf den Kopf – dasselbe Ziel" : "Ein kleines Ziel in ~2 m anzielen",
+        text: st.kalibTeil ? "Handy um 180° um die Kamera drehen (Oberkante nach unten) und genau dieselbe Stelle anzielen."
+          : "Z. B. eine Steckdose oder Schraube etwa auf Bauchhöhe. Fadenkreuz drauf, ruhig halten, auslösen.",
+        weiter: "Abbrechen ›"
+      };
+      case "schluss": return {
+        krume: "SCHRITT 1b · KONTROLLE",
+        titel: "Noch einmal auf Ecke 1",
+        text: "Dieselbe erste Ecke erneut anzielen – daraus rechnet die App das Weglaufen der Richtung heraus.",
+        weiter: "Überspringen ›"
+      };
       case "ecken": return {
         krume: `SCHRITT 1 · ECKEN · ${n} GESETZT`,
         titel: st.ziel === "decke" ? "Deckenecke anzielen" : "Bodenecke anzielen",
@@ -267,7 +302,7 @@ export function starteAssistent(opts) {
     w.disabled = !info.weiter;
     let html = "";
     if (st.phase === "ecken") {
-      const H = A.raumhoeheGezielt(st.a, A.hoeheVorBand(st.a));
+      const H = A.raumhoehe(st.a, A.parameterStart(st.a).p);
       html = `<button class="as-chip ${st.ziel === "boden" ? "an" : ""}" data-ziel="boden">Boden</button>
         <button class="as-chip ${st.ziel === "decke" ? "an" : ""}" data-ziel="decke" ${H ? "" : `title="Erst Raumhöhe messen"`}>Decke${H ? "" : " (Höhe?)"}</button>`;
     } else if (st.phase === "oeffnung") {
@@ -277,7 +312,7 @@ export function starteAssistent(opts) {
     }
     c.innerHTML = html;
     c.querySelectorAll("[data-ziel]").forEach(b => b.onclick = () => {
-      if (b.dataset.ziel === "decke" && !A.raumhoeheGezielt(st.a, A.hoeheVorBand(st.a))) {
+      if (b.dataset.ziel === "decke" && !A.raumhoehe(st.a, A.parameterStart(st.a).p)) {
         // Für Deckenecken braucht es die Raumhöhe – kurz einschieben.
         st.vorHoehe = "ecken"; st.phase = "hoehe"; st.hoeheTeil = null; chipsMalen(); return;
       }
@@ -290,29 +325,35 @@ export function starteAssistent(opts) {
   /** Was der aktuelle Strahl treffen würde – für Anzeige und Auslösen. */
   function treffer(v) {
     const a = st.a;
-    const h = A.hoeheVorBand(a);
-    const H = A.raumhoeheGezielt(a, h);
+    const { p } = A.parameterStart(a);
+    const H = A.raumhoehe(a, p);
+    if (st.phase === "kalib" || st.phase === "schluss") {
+      return { ok: true, wert: `${komma(Z.neigungGrad(v), 1)}°`, info: st.phase === "kalib" ? "Neigung" : "Kontrollschuss auf Ecke 1" };
+    }
     if (st.phase === "ecken" || (st.phase === "hoehe" && !st.hoeheTeil)) {
       if (st.phase === "ecken" && st.ziel === "decke") {
-        const p = H ? Z.deckenpunkt(v, h, H) : null;
-        return p ? { ok: true, wert: meter(p.d), info: `Decke · ${Math.round(Z.neigungGrad(v) * -1)}° nach oben` }
+        const q = H ? Z.deckenpunktM(v, p, H) : null;
+        return q ? { ok: true, wert: meter(q.d), info: `Decke · ${Math.round(-Z.neigungGrad(v))}° nach oben` }
           : { ok: false, wert: "–", info: "nach oben an die Deckenecke zielen" };
       }
-      const p = Z.bodenpunkt(v, h);
-      if (!p) return { ok: false, wert: "–", info: "zu flach – tiefer auf den Boden zielen" };
-      return { ok: true, wert: meter(p.d), info: `± ${Math.round(Z.unsicherheitBoden(v, h, A.SIGMA_GRAD) * 100)} cm · ${Math.round(Z.neigungGrad(v))}° nach unten`, p };
+      const bereich = Z.zielBereich(v, p);
+      if (bereich === "flach") return { ok: false, wert: "–", info: "zu flach – näher heran oder die Deckenecke nehmen" };
+      if (bereich === "steil") return { ok: false, wert: "–", info: "zu steil – einen Schritt zurück" };
+      const q = Z.bodenpunktM(v, p);
+      if (!q) return { ok: false, wert: "–", info: "tiefer auf den Boden zielen" };
+      const sig = A.unsicherheitLive(v, a);
+      return { ok: true, wert: meter(q.d), info: `± ${Math.round(sig * 100)} cm bis zum Maßstab · ${Math.round(Z.neigungGrad(v))}° nach unten`, p: q };
     }
     if (st.phase === "hoehe") {
-      const tmp = { ...a, hoehe: { vUnten: st.hoeheTeil, vOben: v }, raumhoeheM: null };
-      const Hm = A.raumhoeheAusKante(tmp, h);
-      return Hm && Hm > h ? { ok: true, wert: meter(Hm), info: "Raumhöhe (vor Kalibrierung)" } : { ok: false, wert: "–", info: "höher zielen – an die Deckenkante" };
+      const Hm = Z.kantenhoeheM(st.hoeheTeil.v, v, p, st.hoeheTeil.t, Date.now());
+      return Hm && Hm > p.h ? { ok: true, wert: meter(Hm), info: "Raumhöhe (vor dem Maßstab)" } : { ok: false, wert: "–", info: "höher zielen – an die Deckenkante" };
     }
     const welt = A.vorschau(a).punkte;
     if (st.phase === "einbau" && Normmasse.befestigung(st.einbauArt) === "DECKE") {
-      const p = H ? Z.deckenpunkt(v, h, H) : null;
-      return p ? { ok: true, wert: "Decke", info: `${meter(p.d)} entfernt` } : { ok: false, wert: "–", info: H ? "an die Decke zielen" : "Raumhöhe fehlt – Schritt 2" };
+      const q = H ? Z.deckenpunktM(v, p, H) : null;
+      return q ? { ok: true, wert: "Decke", info: `${meter(q.d)} entfernt` } : { ok: false, wert: "–", info: H ? "an die Decke zielen" : "Raumhöhe fehlt – Schritt 2" };
     }
-    const w = welt.length >= 3 ? Z.ersteWand(v, h, welt) : null;
+    const w = welt.length >= 3 ? Z.ersteWandM(v, p, welt) : null;
     if (!w) return { ok: false, wert: "–", info: "keine Wand im Fadenkreuz" };
     return { ok: true, wert: `${Math.round(w.hoehe * 100)} cm`, info: `über Boden · ${meter(w.abstand)} entlang der Wand` };
   }
@@ -368,31 +409,49 @@ export function starteAssistent(opts) {
   function ausloesen() {
     const m = blickJetzt();
     if (!m) { melde("Kein Lagesensor – Auslösen nicht möglich."); return; }
-    const t = treffer(m.v);
-    if (!t.ok) { melde(t.info); return; }
+    const tr = treffer(m.v);
+    if (!tr.ok) { melde(tr.info); return; }
     if (m.streuungGrad > 1.2) { melde("Zu unruhig – nochmal, ruhig halten."); return; }
     const v = m.v.map(x => Math.round(x * 1e6) / 1e6);
+    const t = Date.now();
     const a = st.a;
-    if (st.phase === "ecken") {
-      a.ecken.push({ v, ebene: st.ziel });
-      brumm(); melde(`Ecke ${a.ecken.length} gesetzt`);
-    } else if (st.phase === "hoehe") {
-      if (!st.hoeheTeil) { st.hoeheTeil = v; brumm(); }
+    if (st.phase === "kalib") {
+      if (!st.kalibTeil) { st.kalibTeil = { v }; brumm(); }
       else {
-        a.hoehe = { vUnten: st.hoeheTeil, vOben: v }; st.hoeheTeil = null; brumm();
-        melde(`Raumhöhe ≈ ${meter(A.raumhoeheAusKante(a, A.hoeheVorBand(a)))}`);
+        const d = Z.neigungsfehlerGrad(st.kalibTeil.v, v);
+        st.kalibTeil = null; brumm();
+        if (Math.abs(d) > 3) melde("Unplausibel (> 3°) – bitte genauer dasselbe Ziel treffen.");
+        else {
+          geraetSpeichern({ neigungsfehlerGrad: Math.round(d * 100) / 100, datum: new Date().toISOString() });
+          a.neigungsfehlerGrad = Math.round(d * 100) / 100;
+          melde(`Neigung kalibriert: ${komma(d, 2)}°`);
+          st.phase = st.vorKalib || "ecken"; st.vorKalib = null;
+        }
+      }
+    } else if (st.phase === "ecken") {
+      a.ecken.push({ v, t, ebene: st.ziel });
+      brumm(); melde(`Ecke ${a.ecken.length} gesetzt`);
+    } else if (st.phase === "schluss") {
+      a.schluss = { v, t }; brumm(); melde("Kontrollschuss gespeichert");
+      st.phase = a.hoehe || a.raumhoeheM ? "oeffnung" : "hoehe";
+    } else if (st.phase === "hoehe") {
+      if (!st.hoeheTeil) { st.hoeheTeil = { v, t }; brumm(); }
+      else {
+        a.hoehe = { vUnten: st.hoeheTeil.v, tUnten: st.hoeheTeil.t, vOben: v, tOben: t }; st.hoeheTeil = null; brumm();
+        const Hm = A.raumhoeheAusKante(a, A.parameterStart(a).p);
+        melde(Hm ? `Raumhöhe ≈ ${meter(Hm)}` : "Raumhöhe gespeichert");
         st.phase = st.vorHoehe || "oeffnung"; st.vorHoehe = null;
         if (st.phase === "ecken") st.ziel = "decke";
       }
     } else if (st.phase === "oeffnung") {
-      if (!st.oeffTeil) { st.oeffTeil = v; brumm(); }
+      if (!st.oeffTeil) { st.oeffTeil = { v, t }; brumm(); }
       else {
-        a.oeffnungen.push({ id: neueId("oef"), art: st.oeffArt, a: st.oeffTeil, b: v });
+        a.oeffnungen.push({ id: neueId("oef"), art: st.oeffArt, a: st.oeffTeil.v, ta: st.oeffTeil.t, b: v, tb: t });
         st.oeffTeil = null; brumm(); melde(`${artWort(st.oeffArt)} erfasst`);
       }
     } else {
       const bef = Normmasse.befestigung(st.einbauArt) === "DECKE" ? "DECKE" : "WAND";
-      a.einbauten.push({ id: neueId("ein"), art: st.einbauArt, befestigung: bef, v });
+      a.einbauten.push({ id: neueId("ein"), art: st.einbauArt, befestigung: bef, v, t });
       brumm(); melde(`${Normmasse.ARTEN.get(st.einbauArt) || st.einbauArt} erfasst`);
     }
     chipsMalen();
@@ -402,12 +461,17 @@ export function starteAssistent(opts) {
   function rueckgaengig() {
     const a = st.a;
     if (!a) return false;
-    if (st.phase === "ecken") {
+    if (st.phase === "kalib") {
+      if (st.kalibTeil) st.kalibTeil = null;
+      else { st.phase = st.vorKalib || "ecken"; st.vorKalib = null; }
+    } else if (st.phase === "ecken") {
       if (!a.ecken.length) return false;
       a.ecken.pop(); melde("Letzte Ecke entfernt");
+    } else if (st.phase === "schluss") {
+      st.phase = "ecken";
     } else if (st.phase === "hoehe") {
       if (st.hoeheTeil) st.hoeheTeil = null;
-      else { st.phase = st.vorHoehe || "ecken"; st.vorHoehe = null; }
+      else { st.phase = st.vorHoehe || (a.schluss ? "schluss" : "ecken"); st.vorHoehe = null; if (st.phase === "schluss") a.schluss = null; }
     } else if (st.phase === "oeffnung") {
       if (st.oeffTeil) st.oeffTeil = null;
       else if (a.oeffnungen.length) { a.oeffnungen.pop(); melde("Letzte Öffnung entfernt"); }
@@ -421,10 +485,13 @@ export function starteAssistent(opts) {
   }
 
   function weiter() {
-    if (st.phase === "ecken") {
+    if (st.phase === "kalib") { st.kalibTeil = null; st.phase = st.vorKalib || "ecken"; st.vorKalib = null; }
+    else if (st.phase === "ecken") {
       if (st.a.ecken.length < 3) return;
-      st.phase = st.a.hoehe || st.a.raumhoeheM ? "oeffnung" : "hoehe"; st.hoeheTeil = null;
-    } else if (st.phase === "hoehe") { st.hoeheTeil = null; st.phase = st.vorHoehe || "oeffnung"; st.vorHoehe = null; }
+      st.phase = st.a.ecken.length >= 4 && !st.a.schluss ? "schluss" : (st.a.hoehe || st.a.raumhoeheM ? "oeffnung" : "hoehe");
+      st.hoeheTeil = null;
+    } else if (st.phase === "schluss") { st.phase = st.a.hoehe || st.a.raumhoeheM ? "oeffnung" : "hoehe"; }
+    else if (st.phase === "hoehe") { st.hoeheTeil = null; st.phase = st.vorHoehe || "oeffnung"; st.vorHoehe = null; }
     else if (st.phase === "oeffnung") { st.oeffTeil = null; st.phase = "einbau"; }
     else { zeige("pruefen"); return; }
     chipsMalen();
@@ -461,9 +528,13 @@ export function starteAssistent(opts) {
           <div><b>${komma(umfang, 2)} m</b><span>Umfang</span></div>
           <div><b>${r.hoeheM ? komma(r.hoeheM, 2) + " m" : "–"}</b><span>Raumhöhe</span></div>
         </div>
-        <div class="as-massstab ${r.kalibriert ? "ok" : "offen"}">
-          ${r.kalibriert ? `<b>✓ Maßstab gesetzt</b> – Kamerahöhe ${komma(r.kamerahoeheM, 2)} m.`
-            : `<b>Noch kein Maßstab.</b> Ein bekanntes Maß genügt: eine Wand mit dem Bandmaß, die Raumhöhe (Laser nach oben) oder die Höhe einer Tür. Bis dahin gilt die geschätzte Kamerahöhe (${komma(r.kamerahoeheM, 2)} m).`}
+        <div class="as-massstab ${r.klasse === "AUFMASS" ? "ok" : "offen"}">
+          <span class="as-klasse ${r.klasse.toLowerCase()}">${r.klasse === "AUFMASS" ? "AUFMASS" : r.klasse === "PLAN" ? "PLAN" : "SKIZZE"}</span>
+          ${r.klasse === "AUFMASS" ? `<b>Zentimetergenau.</b> Jede Wand ± ${Math.max(1, Math.round(Math.max(...r.waende.map(w => w.sigmaM)) * 100))} cm oder besser.`
+            : r.kalibriert ? `<b>Maßstab gesetzt</b>, aber noch nicht überall zentimetergenau.`
+              : `<b>Form stimmt, Maßstab fehlt.</b> Ein bekanntes Maß genügt: eine Wand mit dem Bandmaß, die Raumhöhe (Laser nach oben) oder die Höhe einer Tür (Norm-Innentür lichte Höhe ≈ 1,97 m).`}
+          ${r.naechstesMass ? `<br><span class="as-tipp">→ ${esc(r.naechstesMass.text)}</span>` : ""}
+          <br><small>Ausgeglichen: Kamerahöhe ${komma(r.kamerahoeheM, 2)} m · Handy ${Math.round(r.armM * 100)} cm vor der Drehachse${a.neigungsfehlerGrad != null ? ` · Neigung kalibriert` : ""}</small>
         </div>
         <h3 class="as-h3">Wände <small>Bandmaß eintragen, wo du nachmisst</small></h3>
         <div class="as-zeilen">${r.waende.map((w, i) => `
@@ -486,7 +557,7 @@ export function starteAssistent(opts) {
             <span class="as-nr">${artWort(o.art).slice(0, 1)}</span>
             <span class="as-mass"><b>${artWort(o.art)} · Wand ${o.wandIndex + 1}</b>
               <small>${cm(o.breiteM)} × ${cm(o.hoeheM)}${o.bruestungM > 0 ? ` · Brüstung ${cm(o.bruestungM)}` : ""} · ab ${komma(o.abstandM, 2)} m</small></span>
-            <input class="as-eingabe" data-oeffh="${esc(o.id)}" inputmode="decimal" placeholder="Höhe" value="${roh.hoeheBekanntM ? komma(roh.hoeheBekanntM, 2) : ""}">
+            <input class="as-eingabe" data-oeffh="${esc(o.id)}" inputmode="decimal" placeholder="${o.art === "TUER" ? "z. B. 1,97" : "Höhe"}" value="${roh.hoeheBekanntM ? komma(roh.hoeheBekanntM, 2) : ""}">
             <button class="as-weg" data-oeffweg="${esc(o.id)}" aria-label="Entfernen">✕</button>
           </div>`; }).join("")}</div>` : ""}
         ${r.einbauten.length ? `<h3 class="as-h3">Installation</h3>
@@ -525,7 +596,7 @@ export function starteAssistent(opts) {
         methode: "zielen", umriss: r2.umriss, hoeheM: r2.hoeheM,
         oeffnungen: r2.oeffnungen,
         einbauten: r2.einbauten.map(e => ({ ...e, hoeheM: e.hoeheM ?? (e.befestigung === "DECKE" ? r2.hoeheM : Normmasse.hoehe(e.art)) })),
-        waende: r2.waende, kamerahoeheM: r2.kamerahoeheM, kalibriert: r2.kalibriert,
+        waende: r2.waende, kamerahoeheM: r2.kamerahoeheM, kalibriert: r2.kalibriert, klasse: r2.klasse,
         aufnahme: JSON.parse(JSON.stringify(a)), hinweise: r2.hinweise
       });
     };
@@ -795,6 +866,14 @@ function stilEinhaengen() {
 .as-zahlen b { display: block; font-size: 18px; } .as-zahlen span { font-size: 11.5px; opacity: .7; }
 .as-massstab { border-radius: 10px; padding: 11px 13px; font-size: 14px; line-height: 1.45; margin: 10px 0; }
 .as-massstab.ok { background: #d9ecd5; color: #22461f; } .as-massstab.offen { background: #f6e3bd; color: #5d420d; }
+.as-massstab small { opacity: .8; } .as-tipp { font-weight: 600; }
+.as-klasse { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .1em; padding: 3px 7px; border-radius: 4px; margin-right: 6px; color: #fff; }
+.as-klasse.aufmass { background: #2f7d3b; } .as-klasse.plan { background: #b07a12; } .as-klasse.skizze { background: #8a5a44; }
+.as-segment { display: flex; gap: 3px; background: rgba(127,127,127,.25); border-radius: 9px; padding: 3px; margin: 6px 0 4px; }
+.as-segment button { flex: 1; min-height: 44px; border: 0; border-radius: 7px; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.as-segment button.an { background: var(--card, #fff); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.as-kalib { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 9px 11px; border-radius: 8px; background: rgba(232,180,74,.18); margin: 8px 0; }
+.as-kalib.ok { background: rgba(47,125,59,.13); }
 .as-h3 { font-size: 15px; margin: 16px 0 6px; } .as-h3 small { font-weight: 400; opacity: .65; font-size: 12.5px; margin-left: 6px; }
 .as-zeilen { display: flex; flex-direction: column; gap: 6px; }
 .as-zeile { display: flex; align-items: center; gap: 8px; background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; padding: 6px 8px; }
@@ -858,5 +937,12 @@ function meter(m) { return `${komma(m, 2)} m`; }
 function cm(m) { return `${Math.round(Number(m) * 100)} cm`; }
 function artWort(a) { return ({ TUER: "Tür", FENSTER: "Fenster", DURCHGANG: "Durchgang", TOR: "Tor" }[a] || a); }
 function kurzName(k) { return ({ STECKDOSE_2FACH: "Steckdose 2×", SICHERUNGSKASTEN: "Verteiler", NETZWERKDOSE: "Netzwerk" }[k] || Normmasse.ARTEN.get(k) || k); }
+const SCHLUESSEL_HALTUNG = "raumwerk.haltung", SCHLUESSEL_GERAET = "raumwerk.geraet";
+function gespeicherteHaltung() { try { return localStorage.getItem(SCHLUESSEL_HALTUNG) === "stativ" ? "stativ" : "hand"; } catch (_) { return "hand"; } }
+/** Wende-Kalibrierung dieses Geräts (Neigungsfehler), oder null. */
+function geraetKalibrierung() {
+  try { const g = JSON.parse(localStorage.getItem(SCHLUESSEL_GERAET) || "null"); return g && Number.isFinite(g.neigungsfehlerGrad) ? g : null; } catch (_) { return null; }
+}
+function geraetSpeichern(g) { try { localStorage.setItem(SCHLUESSEL_GERAET, JSON.stringify(g)); } catch (_) {} }
 function gespeicherteHoehe() { try { const v = Number(localStorage.getItem(SCHLUESSEL_HOEHE)); return v > 0.3 && v < 2.5 ? v : 1.4; } catch (_) { return 1.4; } }
 function brumm() { try { navigator.vibrate && navigator.vibrate(25); } catch (_) {} }
