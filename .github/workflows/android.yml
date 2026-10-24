@@ -26,11 +26,18 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Android-SDK einrichten
-        uses: android-actions/setup-android@v3
-
+      # Das SDK ist auf ubuntu-latest vorinstalliert. android-actions/setup-android
+      # ruft „sdkmanager tools“ auf – das Paket gibt es in den aktuellen
+      # cmdline-tools nicht mehr, der Schritt bricht dort ab.
       - name: SDK-Komponenten
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKM" ] || SDKM="$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "sdk.dir=$SDK" > android-app/local.properties
 
       - name: assembleDebug
         working-directory: android-app
@@ -45,23 +52,27 @@ jobs:
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      # Die fertige APK zusätzlich auf den Branch `apk` legen – so lässt sie
-      # sich per git (statt nur über die Artefakt-Oberfläche) beziehen.
+      # Die fertige APK zusätzlich auf einen Branch legen – so lässt sie sich
+      # per git (statt nur über die Artefakt-Oberfläche) beziehen. Vom
+      # Standard-Branch auf `apk`, von Arbeits-Branches auf `apk-vorschau` –
+      # ein Zwischenstand überschreibt nie die APK, die im Feld verteilt wird.
       - name: APK auf apk-Branch veröffentlichen
+        env:
+          ZIEL: ${{ github.ref_name == github.event.repository.default_branch && 'apk' || 'apk-vorschau' }}
         run: |
           set -e
           APK="$GITHUB_WORKSPACE/android-app/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK"
           repo="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
           tmp="$RUNNER_TEMP/apkpub"; rm -rf "$tmp"
-          if git clone --depth 1 --branch apk "$repo" "$tmp" 2>/dev/null; then
+          if git clone --depth 1 --branch "$ZIEL" "$repo" "$tmp" 2>/dev/null; then
             cd "$tmp"
           else
-            git clone --depth 1 "$repo" "$tmp"; cd "$tmp"; git checkout --orphan apk
+            git clone --depth 1 "$repo" "$tmp"; cd "$tmp"; git checkout --orphan "$ZIEL"
           fi
           find . -maxdepth 1 ! -name .git ! -name . -exec rm -rf {} +
           cp "$APK" raumwerk-ziegel.apk
-          printf 'RAUMWERK Android (Ziegel-Design)\nCommit: %s\nGebaut: %s UTC\n' "$GITHUB_SHA" "$(date -u '+%Y-%m-%d %H:%M')" > BUILD.txt
+          printf 'RAUMWERK Android (Ziegel-Design)\nBranch: %s\nCommit: %s\nGebaut: %s UTC\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(date -u '+%Y-%m-%d %H:%M')" > BUILD.txt
           git add -A
           git -c user.name=raumwerk-ci -c user.email=ci@raumwerk commit -m "APK ${GITHUB_SHA::7}"
-          git push -f "$repo" HEAD:apk
+          git push -f "$repo" "HEAD:$ZIEL"
