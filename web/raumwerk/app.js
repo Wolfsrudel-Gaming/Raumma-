@@ -515,7 +515,7 @@ async function arMitKunde() {
   }
 }
 
-/** Geführte Foto-Aufnahme für die Photogrammetrie (Referenzwürfel + Sensorik). */
+/** Geführte Foto-Aufnahme für die Photogrammetrie (Sensorik; Referenzwürfel optional). */
 async function scanStarten() {
   try {
     const mod = await import("./scan.js");
@@ -525,6 +525,14 @@ async function scanStarten() {
         projekt.scans = projekt.scans || [];
         projekt.scans.push(manifest);
         speichernJetzt();
+      },
+      // Bilder der Serie auf Wunsch als Projektfotos übernehmen (schon verkleinert).
+      fotoHinzufuegen: (datenUrl, titel) => {
+        projekt.fotos.push({
+          id: Store.neueId("foto"), raumId: raum().id, relX: 0.5, relY: 0.5,
+          titel, datenUrl, notiz: ""
+        });
+        return true;
       },
       onEnde: () => render(),
     });
@@ -550,14 +558,17 @@ function renderPipeline() {
         <span class="pip-status ${String(j?.status ?? "").replace(/[^a-z]/g, "")}">${esc(j?.status)}</span>
         ${j?.status === "fertig" ? `<button class="mini" data-wolke="${i}" data-fokus="wolke-${i}">Wolke</button>` : ""}
       </div>`).join("") : `<p class="leer">Aufträge laden oder eine PLY-Datei öffnen.</p>`}</div>
-    ${wolkeInfo ? `<div class="pip-info">
+    ${wolkeInfo ? `<div class="pip-info${wolkeInfo.simuliert ? " simuliert" : ""}">
+      ${wolkeInfo.simuliert ? `<strong>SIMULATION – keine echte Messung.</strong> Wolke und Maßstab sind Demo-Werte.<br>` : ""}
       ${zahl(wolkeInfo.punkte)} Punkte · Spanne ${zahl(wolkeInfo.spanne_m)} m
       ${wolkeInfo.skala != null ? `<br>Maßstab ${esc(wolkeInfo.skala)} m/Einheit` : ""}
       ${wolkeInfo.qa != null ? ` · Kontrollmaß ±${esc(wolkeInfo.qa)} mm` : ""}
+      ${wolkeInfo.raum ? `<br><button class="klein-knopf" id="pipRaum">Raumvorschlag in „${esc(raum().name)}“ übernehmen</button>` : ""}
     </div>` : ""}`;
   bind("pipUrl", "change", v => { pipelineUrl = v.trim().replace(/\/+$/, ""); speicherSchreiben("raumwerk.pipeline", pipelineUrl); });
   $("pipLaden").onclick = pipelineAuftraege;
   $("pipDatei").onclick = () => $("fileWolke").click();
+  if (wolkeInfo?.raum) $("pipRaum").onclick = pipelineRaumUebernehmen;
   panel.querySelectorAll("[data-wolke]").forEach(b => b.onclick = () => {
     const j = pipelineJobs[Number(b.getAttribute("data-wolke"))];
     if (j) pipelineWolke(j.id);
@@ -583,10 +594,32 @@ async function pipelineWolke(id) {
       fetch(`${pipelineUrl}/jobs/${pfad}/wolke.ply`).then(r => r.text()),
     ]);
     const mass = res?.massstab || {};
-    await wolkeAusText(ply, { skala: mass.skala_m_je_einheit, qa: mass.kontrollmass_abweichung_mm });
+    const raumVorschlag = res?.raum && typeof res.raum === "object" && G.umrissLesen(res.raum.umriss) ? res.raum : null;
+    await wolkeAusText(ply, {
+      skala: mass.skala_m_je_einheit, qa: mass.kontrollmass_abweichung_mm,
+      simuliert: res?.simuliert === true, raum: raumVorschlag
+    });
   } catch (_) {
     alert("Die Punktwolke konnte nicht geladen werden.");
   }
+}
+
+/**
+ * Raumvorschlag der Pipeline (aus eingegebenen Wandlängen, nicht aus der Wolke)
+ * in den aktiven Raum übernehmen – wie ein Ergebnis des Aufmaß-Assistenten.
+ */
+function pipelineRaumUebernehmen() {
+  const e = wolkeInfo?.raum;
+  if (!e) return;
+  const r = raum();
+  if (!confirm(`Umriss von „${r.name}“ durch den Raumvorschlag der Pipeline ersetzen?`)) return;
+  let h = [];
+  try { h = uebernehmen(projekt, r.id, { ...e, methode: "band" }, Store.neueId); }
+  catch (err) { console.error("RAUMWERK: Raumvorschlag nicht übernommen.", err); alert("Der Raumvorschlag konnte nicht übernommen werden."); return; }
+  setAnsicht("raum");
+  plan.einpassen();
+  meldung(`${r.name}: ${komma(G.flaeche(r), 2)} m² aus der Pipeline übernommen`,
+    { hinweise: [...(Array.isArray(e.hinweise) ? e.hinweise.map(String) : []), ...h] });
 }
 
 /** Eine PLY (aus der Pipeline oder als Datei) in den Wolke-Viewer bringen. */
@@ -1247,7 +1280,7 @@ function renderStatus() {
   }
   if (ansicht === "wolke") {
     const i = wolkeInfo || {};
-    $("statusZeile").textContent = `Punktwolke aus der Pipeline · ${i.punkte ?? "?"} Punkte`
+    $("statusZeile").textContent = `Punktwolke aus der Pipeline${i.simuliert ? " (SIMULATION)" : ""} · ${i.punkte ?? "?"} Punkte`
       + (i.skala != null ? ` · Maßstab ${i.skala} m/Einheit` : "") + " · ziehen dreht, Rad zoomt";
     return;
   }

@@ -259,6 +259,8 @@ svg.plan[hidden] { display: none; }   /* schlägt die display-Regel, sonst bleib
 .pip-status.laeuft { background: #fff3d9; color: var(--hint); }
 .pip-status.fehler { background: var(--warn-bg); color: var(--warn); }
 .pip-info { margin-top: 8px; font-size: 12px; background: #f3f8f8; border-left: 4px solid var(--tk); padding: 8px 10px; border-radius: 0 6px 6px 0; font-variant-numeric: tabular-nums; }
+.pip-info.simuliert { border-left-color: #d9822b; }
+.pip-info .klein-knopf { margin-top: 8px; }
 
 /* Foto-Pins im Plan */
 .foto-pin { cursor: grab; }
@@ -435,7 +437,7 @@ svg.plan[hidden] { display: none; }   /* schlägt die display-Regel, sonst bleib
 .scan-balken { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #7fbf4d; transition: width .25s; }
 .scan-zahl { position: relative; margin-left: auto; padding: 0 8px; font-size: 12px; text-shadow: 0 1px 2px #000; }
 .scan-auto { flex-direction: row; align-items: center; gap: 6px; }
-.scan-schuss { background: #fff; color: #1a1a1a; border: none; border-radius: 40px; width: 62px; height: 62px;
+.scan-schuss { flex: none; background: #fff; color: #1a1a1a; border: none; border-radius: 40px; width: 66px; height: 66px; padding: 0; font-size: 11px;
   font-weight: 700; cursor: pointer; box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
 
 .scan-galerie { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }

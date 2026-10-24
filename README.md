@@ -20,13 +20,26 @@ Planungsschicht** samt proprietärem Kern:
   `Komponente.kt`, `Regelwerk.kt`, `Pruefung.kt` – die parametrischen
   „Klötzchen" mit echten Baumaßen, die versionierte VDE/DIN-Regelbasis und die
   aktive Freiraum-/Normprüfung mit konservativer unterer Schranke.
+- **Aufmessen ohne Würfel und ohne Laser** (`web/zielen.js`,
+  `web/raumaufnahme.js`): das Handy auf die Bodenecken richten, die Neigung
+  ergibt die Entfernung. Ein Kameramodell (Linse vor der Drehachse,
+  Neigungsfehler, Kreiseldrift) wird per Ausgleichsrechnung mitgeschätzt;
+  ein einziges Bandmaß setzt den Maßstab. Jedes Ergebnis trägt eine ehrliche
+  Klasse (AUFMASS ≤ 5 cm · PLAN ≤ 15 cm · SKIZZE) und sagt, welches Maß als
+  Nächstes am meisten bringt. Details und Simulation: **[docs/AUFMASS.md](docs/AUFMASS.md)**.
+- **Handy-App** (`web/raumwerk/mobil/`, als APK in `android-app/`): Raum
+  anlegen → Aufmaß-Assistent (Zielen, Bandmaß-Zug oder Rechteck) → Türen,
+  Fenster, Steckdosen → Wand nachmessen → Bericht teilen/drucken.
 - **Browser-App** unter `web/raumwerk/`: Grundriss mit Wandnummern,
   Klötzchen setzen/ziehen mit **Live-Abstands- und Normprüfung**, Messen,
   Varianten-Vergleich und PDF-Report.
 
 ```
-gradle test                                   # Kern inkl. Normprüfung (38 Tests)
+gradle test                                   # Kern inkl. Normprüfung (43 Tests)
+for t in web/tests/*.test.mjs; do node "$t"; done   # Web-Kern und Apps (~820 Prüfungen)
+node web/tests/e2e/feld.e2e.mjs               # Feldablauf im echten Browser (Playwright)
 cd web && python3 -m http.server 8099         # dann: http://localhost:8099/raumwerk/
+                                              #  bzw. …/raumwerk/mobil/ (Handy)
 ```
 
 Dieselbe Web-App ist als **PWA installierbar** (Android/iOS „zum Startbildschirm")
@@ -46,7 +59,7 @@ Details, Konzept-Zuordnung und was bewusst noch fehlt: **[docs/RAUMWERK.md](docs
 | Aufmaß | `src/main/kotlin/.../Aufmass.kt` | Polygonzug, Prüfungen, Aufmaßliste |
 | Normmaße | `src/main/kotlin/.../Normmasse.kt` | Katalog, Einbauhöhen, Türmaße |
 | Platzierung | `src/main/kotlin/.../Platzierung.kt` | Anlegen am Nachbarn, Einrasten, Geschosse |
-| Tests | `src/test/kotlin/…` | 30 Tests, zugleich die Fallsammlung |
+| Tests | `src/test/kotlin/…` | 43 Tests, zugleich die Fallsammlung |
 | Schema | `sql/schema.sql` | PostgreSQL-Tabellen |
 | Geometrie (Web) | `web/geometrie.js` | Spiegel der Kotlin-Geometrie fürs Frontend |
 | Schaltzeichen | `web/symbole.js` | Technische Zeichen für den Grundriss |

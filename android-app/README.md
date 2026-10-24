@@ -37,10 +37,19 @@ wie die Web-Workstation liegt darunter – die PC-Planung bleibt unter
   Nachtsicht und die Einzellinsen einer logischen Multi-Kamera) samt
   Brennweiten, dazu die komplette Sensorliste.
 
-Der neue **Scan-Assistent** (Knopf „Scan") nutzt das: Referenzwürfel bekannter
-Kantenlänge als Maßstab, ein **Pfeil auf dem Display** führt per Kompass durch
-die noch offenen Blickrichtungen, jede Aufnahme wird mit ihrer Lage und dem Ort
-verschlagwortet – die Grundlage für die Photogrammetrie (Schicht ②).
+Wichtigste Nutzung ist das **Aufmessen per Zielen** (Aufmaß-Assistent): der
+Spiel-Rotationsvektor (Gyroskop + Beschleunigung, ohne Magnetfeld – keine
+Störung durch Stahlträger) liefert ~60-mal pro Sekunde die Lage als Quaternion;
+die **Lautstärketaste** löst aus, damit das Handy beim Zielen ruhig bleibt.
+
+Der **Scan-Assistent** (Knopf „Scan") führt mit einem **Pfeil auf dem
+Display** durch die noch offenen Blickrichtungen und verschlagwortet jede
+Aufnahme mit Lage und Ort – die Grundlage für die Photogrammetrie (Schicht ②).
+Ein Referenzwürfel ist dafür **optional**.
+
+Außerdem: **Teilen** (Export, Bericht) über das Android-Teilen-Menü
+(FileProvider), **Drucken/PDF** über den Druckdienst, **Dateiauswahl mit
+Kamera** für Fotos und Import, **Zurück-Taste** schließt erst Dialoge.
 
 Im normalen Browser fällt die Web-Schicht (`web/raumwerk/native.js`) sauber auf
 DeviceOrientation/Geolocation zurück; die App bekommt die echten Sensoren.
@@ -53,7 +62,8 @@ DeviceOrientation/Geolocation zurück; die App bekommt die echten Sensoren.
 
 Der Workflow **`.github/workflows/android.yml`** baut die Debug-APK auf einem
 GitHub-Runner (dort ist das Android-SDK verfügbar) und legt sie als
-**Artefakt** `raumwerk-android-debug` ab. Nach jedem Push auf `android-app/**`
+**Artefakt** `raumwerk-android-debug` ab; zusätzlich liegt sie auf dem Branch
+`apk` (Standard-Branch) bzw. `apk-vorschau` (Arbeits-Branches). Nach jedem Push auf `android-app/**`
 oder `web/**` – oder manuell über „Run workflow". Die `app-debug.apk` unter den
 Artefakten herunterladen und aufs Gerät ziehen (Installation aus unbekannten
 Quellen erlauben).
@@ -74,10 +84,10 @@ Platform 34 und Build-Tools 34.
 ## Aufbau
 
 - `app/src/main/java/de/raumwerk/app/MainActivity.kt` – WebView +
-  `WebViewAssetLoader`, Kamera-Durchreichung, Sensor-Lebenszyklus, lädt
-  `raumwerk/index.html?skin=ziegel`.
-- `app/src/main/java/de/raumwerk/app/NativeBridge.kt` – Lage/GPS/Kamera-Steckbrief
-  als `AndroidNative` für die Web-App.
+  `WebViewAssetLoader`, Kamera-Durchreichung, Dateiauswahl, Lautstärke- und
+  Zurück-Taste, Sensor-Lebenszyklus, lädt `raumwerk/mobil/index.html`.
+- `app/src/main/java/de/raumwerk/app/NativeBridge.kt` – Lage (Quaternion),
+  GPS, Kamera-Steckbrief, Teilen, Drucken als `AndroidNative` für die Web-App.
 - `app/src/main/res/` – Design: Farben, Backstein-Theme, Splash, Adaptive-Icon.
 - `app/build.gradle.kts` – `kopiereWeb`-Task kopiert `../web` nach `assets/`.
 
