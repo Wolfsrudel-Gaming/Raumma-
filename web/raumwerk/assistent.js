@@ -599,7 +599,7 @@ export function starteAssistent(opts) {
         </div>
         <div class="as-massstab ${r.klasse === "AUFMASS" ? "ok" : "offen"}">
           <span class="as-klasse ${r.klasse.toLowerCase()}">${r.klasse === "AUFMASS" ? "AUFMASS" : r.klasse === "PLAN" ? "PLAN" : "SKIZZE"}</span>
-          ${r.klasse === "AUFMASS" ? `<b>Zentimetergenau.</b> Jede Wand ± ${Math.max(1, Math.round(Math.max(...r.waende.map(w => w.sigmaM)) * 100))} cm oder besser.`
+          ${r.klasse === "AUFMASS" ? `<b>Zentimetergenau.</b> Jede Wand ± ${Math.max(1, Math.round(Math.max(...r.waende.map(w => w.sigmaM)) * 100))} cm oder besser${(r.annahmen || []).includes("rechtwinklig") ? " – vorausgesetzt, die geglätteten Ecken sind rechtwinklig" : ""}.`
             : r.kalibriert ? `<b>Maßstab gesetzt</b>, aber noch nicht überall zentimetergenau.`
               : `<b>Form stimmt, Maßstab fehlt.</b> Ein bekanntes Maß genügt: eine Wand mit dem Bandmaß, die Höhe einer Tür (Norm-Innentür lichte Höhe ≈ 1,97 m)${a.hoehe ? " oder die Raumhöhe (Laser nach oben)."
                 : `. Die Raumhöhe vom Laser zählt erst, wenn die Raumkante gezielt ist: <button class="as-link" data-zurhoehe>Raumkante anzielen ›</button>`}`}
@@ -801,7 +801,7 @@ export function zielErgebnis(a, aufbauM) {
     methode: "zielen", umriss: r.umriss, hoeheM: r.hoeheM,
     oeffnungen: r.oeffnungen,
     einbauten: r.einbauten.map(e => ({ ...e, hoeheM: e.hoeheM ?? (e.befestigung === "DECKE" ? r.hoeheM : Normmasse.hoehe(e.art)) })),
-    waende: r.waende, kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse,
+    waende: r.waende, kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse, annahmen: r.annahmen || [],
     aufnahme: JSON.parse(JSON.stringify(a)), hinweise: r.hinweise
   };
 }

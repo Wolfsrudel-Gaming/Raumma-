@@ -45,7 +45,8 @@ export function uebernehmen(projekt, raumId, e, neueId) {
   raum.aufmass = {
     methode: e.methode, datum: e.datum || new Date().toISOString(),
     waende: (e.waende || []).map(w => ({ quelle: w.quelle || Quelle.GETIPPT, sigmaM: w.sigmaM ?? null })),
-    kamerahoeheM: e.kamerahoeheM ?? null, kalibriert: e.kalibriert ?? null, klasse: e.klasse ?? null
+    kamerahoeheM: e.kamerahoeheM ?? null, kalibriert: e.kalibriert ?? null, klasse: e.klasse ?? null,
+    annahmen: Array.isArray(e.annahmen) && e.annahmen.length ? e.annahmen.slice() : null
   };
   raum.aufnahme = e.aufnahme || null;
 
@@ -56,7 +57,14 @@ export function uebernehmen(projekt, raumId, e, neueId) {
   const oe = sortieren(projekt.oeffnungen.filter(o => o.raumId === raumId), neuO, ersetzen, o => (o.wandIndex ?? 0) < n);
   const ei = sortieren(projekt.einbauten.filter(x => x.raumId === raumId), neuE, ersetzen,
     x => x.befestigung !== "WAND" || (x.wandIndex ?? 0) < n);
+  // Was neu gezielt wurde und schon (von Hand) an derselben Stelle steht, ist
+  // dasselbe Bauteil: die neue Messung gilt, Bezeichnung & Co. bleiben – sonst
+  // stünde eine von Hand korrigierte Tür nach „Neu aufmessen“ doppelt da.
+  const zusammen = ersetzen
+    ? zusammenfuehren(raum, oe.behalte, neuO, o => oeffnungMitte(raum, o)) + zusammenfuehren(raum, ei.behalte, neuE, x => G.lageImRaum(raum, x, 0))
+    : 0;
   if (oe.ersetzt + ei.ersetzt) hinweise.push(`${anzahl(oe.ersetzt, ei.ersetzt)} der früheren Zielaufnahme entfernt – die neue Aufnahme ersetzt sie.`);
+  if (zusammen) hinweise.push(`${zusammen} vorhandene(s) Element(e) an derselben Stelle neu gezielt – Maße aus der neuen Aufnahme, Bezeichnung übernommen.`);
   if (oe.weg + ei.weg) hinweise.push(`${anzahl(oe.weg, ei.weg)} entfernt – ihre Wand gibt es im neuen Umriss nicht mehr.`);
   if (oe.geloest + ei.geloest) hinweise.push(`${anzahl(oe.geloest, ei.geloest)} aus der Zielaufnahme bleiben als Handeintrag – Lage im neuen Umriss prüfen.`);
   projekt.oeffnungen = projekt.oeffnungen.filter(o => o.raumId !== raumId).concat(oe.behalte, neuO);
@@ -79,6 +87,43 @@ function sortieren(alte, neu, ersetzen, wandDa) {
     erg.behalte.push(y);
   }
   return erg;
+}
+
+/**
+ * Behaltene Objekte, die ein neu gezieltes gleicher Art an derselben Stelle
+ * (≤ 0,5 m) haben, fallen weg; ihre nicht gemessenen Angaben (Bezeichnung,
+ * Notiz …) wandern zum neuen. Gibt die Zahl der Zusammenführungen zurück.
+ */
+function zusammenfuehren(raum, behalte, neu, lage) {
+  const gemessen = new Set(["id", "raumId", "art", "befestigung", "wandIndex", "abstandM", "breiteM", "hoeheM", "bruestungM", "relX", "relY", "ausAufnahme"]);
+  const frei = new Set(neu);
+  let zahl = 0;
+  for (const y of behalte.slice()) {
+    const py = lage(y);
+    if (!py || !Number.isFinite(py.x) || !Number.isFinite(py.y)) continue;
+    let best = null, bestD = 0.5;
+    for (const z of frei) {
+      if (z.art !== y.art) continue;
+      const pz = lage(z);
+      const d = pz ? Math.hypot(pz.x - py.x, pz.y - py.y) : Infinity;
+      if (d <= bestD) { best = z; bestD = d; }
+    }
+    if (!best) continue;
+    for (const [k, v] of Object.entries(y)) if (!gemessen.has(k) && best[k] == null) best[k] = v;
+    frei.delete(best);
+    behalte.splice(behalte.indexOf(y), 1);
+    zahl++;
+  }
+  return zahl;
+}
+
+/** Mitte einer Öffnung im Raum (m) – auf dem aktuellen Umriss. */
+function oeffnungMitte(raum, o) {
+  const e = G.ecken(raum), i = Number(o.wandIndex);
+  if (!e.length || !Number.isInteger(i) || i < 0 || i >= e.length) return null;
+  const a = e[i], b = e[(i + 1) % e.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const t = (Number(o.abstandM) || 0) + (Number(o.breiteM) || 0) / 2;
+  return { x: a[0] + (b[0] - a[0]) / len * t, y: a[1] + (b[1] - a[1]) / len * t };
 }
 
 const anzahl = (o, e) => [o ? `${o} Öffnung(en)` : "", e ? `${e} Einbau(ten)` : ""].filter(Boolean).join(" und ");
@@ -128,7 +173,7 @@ export function nachmessen(projekt, raumId, wandIndex, laengeM, neueId) {
     const n = r.waende.length;
     uebernehmen(projekt, raumId, {
       methode: "zielen", umriss: r.umriss, hoeheM: r.hoeheM, waende: r.waende,
-      kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse, aufnahme: a,
+      kamerahoeheM: r.kamerahoeheM, kalibriert: r.kalibriert, klasse: r.klasse, annahmen: r.annahmen, aufnahme: a,
       oeffnungen: gezielteNeu(projekt.oeffnungen, r.oeffnungen, raumId, n, (alt, o) => ({ ...alt, ...o })),
       einbauten: gezielteNeu(projekt.einbauten, r.einbauten, raumId, n, (alt, x) => ({ ...alt, ...x, hoeheM: x.hoeheM ?? alt.hoeheM ?? null }))
     }, neueId);

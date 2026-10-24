@@ -53,14 +53,18 @@ a = r + L·sinθ'        z = h + L·cosθ'        θ' = θ − δ
 `raumaufnahme.js` gleicht **h, r und δ** nach kleinsten Quadraten aus
 (Levenberg-Marquardt) – aus allem, was bekannt ist:
 
-- **Bandmaße** an Wänden (± 5 mm),
+- **Bandmaße** an Wänden (± 5 mm; im Ausgleich gegen die *gezielte* Länge
+  derselben Wand mit deren Zielrauschen gewichtet – sonst presste der
+  Ausgleich dieses Rauschen in h, r, δ und verzerrte alle Winkel),
 - eine **bekannte Raumhöhe** (Laser nach oben, ± 1 cm) – sie setzt nur
   zusammen mit der gezielten Raumkante (Schritt „Raumhöhe“) einen Maßstab;
   ohne Kante sagt die App das und verweist auf den Schritt,
 - eine **bekannte Tür-/Fensterhöhe** (Norm-Innentür lichte Höhe ≈ 1,97 m) –
   genau die Größe, die die App an der Öffnung als Höhe anzeigt: bei Türen und
   Durchgängen die lichte Höhe ab Fertigfußboden (auch wenn auf den Rohboden
-  gezielt wurde), beim Fenster mit Brüstung Oberkante − Unterkante,
+  gezielt wurde), beim Fenster mit Brüstung Oberkante − Unterkante
+  (Aufnahmen bis `version: 2` meinten noch die Oberkante über dem gezielten
+  Boden und werden so weitergerechnet),
 - „der Raum ist **rechtwinklig**“ (weich, ± 1° je Ecke),
 - Vorwissen über die Haltung (Freihand: r = 0,30 ± 0,10 m; Stativ: r = 0).
 
@@ -98,11 +102,15 @@ Jede gezielte Wand trägt ihre Unsicherheit („gezielt ± 3 cm") – im Raumbla
 im Report, in der Prüfansicht. Sie setzt sich zusammen aus dem Zittern je
 Schuss und der Restunsicherheit von h, r, δ (Kovarianz des Ausgleichs), linear
 durch den Zugausgleich geführt: Eine Wand, die durch Bandmaße und Schluss
-festliegt, ist so genau wie diese. Daraus folgt die **Qualitätsklasse**:
+festliegt, ist so genau wie diese. Dazu kommen die **Richtungen**, die der
+Ausgleich festhält: das Zielrauschen und die h-, r-, δ-Unsicherheit nicht
+geglätteter Ecken (sie verzerrt nahe und ferne Ecken verschieden) und – bei
+geglätteten Ecken – die Annahme selbst mit ± 0,3° je Ecke (auch Neubauten
+sind nicht exakt rechtwinklig). Daraus folgt die **Qualitätsklasse**:
 
 | Klasse | Bedeutung | typisch erreicht mit |
 |---|---|---|
-| **AUFMASS** | jede Wand ± 5 cm oder besser | 1–2 Bandmaße |
+| **AUFMASS** | jede Wand ± 5 cm oder besser | 2 Bandmaße über Eck (Rechteck oft schon 1) |
 | **PLAN** | ± 15 cm | Türhöhe oder Raumhöhe (mit gezielter Kante) als einziger Maßstab, Stativ + kalibrierte Neigung |
 | **SKIZZE** | Form stimmt, Maßstab ± 5–8 % | kein bekanntes Maß |
 
@@ -113,15 +121,17 @@ r = 20–45 cm, δ ≈ 0,5°, Zittern 0,2°, Drift 2°/min; `RMS / 95 %`):
 |---|---|---|
 | ohne Maßstab | 21 / 42 cm | 17 / 35 cm |
 | Türzarge 1,97 m | 10 / 20 cm | 7 / 15 cm |
-| 1 Bandmaß | 2,0 / 4,5 cm | 3,0 / 6,3 cm |
-| 2 Bandmaße + Kontrollschuss | 0,3 / 0,6 cm | 2,2 / 4,8 cm |
+| 1 Bandmaß | 2,0 / 4,4 cm | 3,0 / 6,1 cm |
+| 2 Bandmaße + Kontrollschuss | 0,3 / 0,6 cm | 1,7 / 3,6 cm |
 
-Die angezeigte 2σ-Unsicherheit deckte den tatsächlichen Fehler in 98–100 %
-der Fälle (bei 2 Bandmaßen im Rechteck melden ~2 % der Fälle eine auffällige
-Schließkorrektur und fallen ehrlich auf SKIZZE, obwohl das Glätten recht
-hatte – das Bandmaß an der genannten Wand klärt es). Die App sagt außerdem,
-**welches Maß jetzt am meisten bringt**
-(ohne Bandmaß: die längste Wand). Schüsse flacher als 12° (Ecke > ~6 m weg)
+Die angezeigte 2σ-Unsicherheit deckte den tatsächlichen Fehler in 99–100 %
+der Fälle; 1σ deckt 87–100 %. Mit einem Bandmaß ist die Angabe bewusst
+vorsichtig (meist PLAN, obwohl der Fehler oft nur 2–4 cm ist): Erst das zweite
+Bandmaß über Eck legt den Maßstab beider Richtungen fest – dann AUFMASS (Rechteck
+300/300, L-Raum 260/300). Die Simulation kennt nur exakt rechte Winkel; die
+angenommenen ± 0,3° je Ecke sind darin also reine Vorsicht. Die App sagt
+außerdem, **welches Maß jetzt am meisten bringt** (ohne Bandmaß: die längste
+Wand). Schüsse flacher als 12° (Ecke > ~6 m weg)
 oder steiler als 75° (man steht fast auf der Ecke) werden abgelehnt.
 
 **Höhen** (Steckdosen, Schalter, Brüstungen) hängen an h und δ, die sich aus
@@ -148,15 +158,24 @@ Haupt-Eigenvektor). Sonst würde der Anteil quer zu ihnen mit 1/sin α in die
 Längen gedrückt – aus 3,00 m Seitenwand eines Trapezes wurden 2,40 m.
 
 Die Lücke vor dem Ausgleich wird gegen das Messrauschen geprüft
-(Mahalanobis-Abstand mit der Kovarianz der Längen). Ist sie mehr als das
-Dreifache dessen, was das Rauschen erklärt, stimmt das Modell nicht – meist
-eine Ecke, die gar nicht rechtwinklig ist. Dann geht die Schließkorrektur in
-die Unsicherheit der verschobenen Wände ein (die Klasse fällt), und die App
-nennt die Wand zum Nachmessen und die am stärksten geglättete Ecke mit dem
-Hinweis, „Rechtwinklig glätten“ auszuschalten. Eine 85°-Ecke wird so sicher
-erkannt, eine 87°-Ecke (≈ 20 cm Lücke auf 5 m) etwa in jedem zweiten Fall.
-Ohne Glätten trägt jede Wand zusätzlich das Richtungsrauschen ihrer Ecken
-(der Ausgleich hält die gezielten Winkel fest).
+(Mahalanobis-Abstand mit der Kovarianz der Längen). Ab 1,5σ zählt ein Teil
+der Schließkorrektur zur Unsicherheit der verschobenen Wände, ab 3σ die ganze –
+gleitend, damit eine Wand an der Schwelle nicht von ± 0,5 cm auf ± 20 cm
+springt. Ab 3σ nennt die App die Wand zum Nachmessen und die am stärksten
+geglättete Ecke. „Rechtwinklig glätten“ auszuschalten rät sie erst, wenn
+Bandmaße sich unter rechten Winkeln widersprechen (bleibende Restlücke) –
+auf bloßen Verdacht hin machte das rechtwinklige Räume nur schlechter.
+
+**Rechte Winkel sind eine Annahme.** Liegen die freien Wände allein durch
+Bandmaße und geglättete Ecken fest, prüft nichts die Ecken. Die App sagt dann
+„vorausgesetzt, die geglätteten Ecken sind rechtwinklig“ (`annahmen:
+["rechtwinklig"]`) und schlägt ein **Kontrollmaß** vor: das Bandmaß an der
+Wand, die der Schluss am stärksten verschoben hat. Danach überbestimmen die
+Bandmaße den Zug, und eine schiefe Ecke zeigt sich als Restlücke. Eine
+87°-Ecke (≈ 20 cm auf 5 m) liegt mit zwei Bandmaßen an der Rauschgrenze des
+Zielens: in der Simulation meist PLAN/SKIZZE, in 5–13 % noch AUFMASS – dann
+aber immer mit diesem Vorbehalt, und das Kontrollmaß deckt sie auf. (Eine
+Parallelogramm-Verzerrung zeigt erst eine Diagonale.)
 
 ### Ablauf in der App
 

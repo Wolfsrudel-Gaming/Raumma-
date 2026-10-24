@@ -244,8 +244,13 @@ a.boden = "roh";
 r = A.rekonstruiere(a);
 a.bandmasse = { [index(r, 5.2)]: 5.0, [index(r, 4.15)]: 4.0 };
 r = A.rekonstruiere(a, { aufbauM: 0.07 });
-nah("Estrich: Steckdose 23 cm ab FFB", r.einbauten.find(e => e.id === "e1").hoeheM, 0.23, 0.02);
-nah("Estrich: Raumhöhe 2,55 ab FFB", r.hoeheM, 2.55, 0.02);
+// Die Umrechnung selbst ist exakt (gleiche Aufnahme, auf den Rohboden bezogen);
+// absolut gilt die angesagte Höhen-Unsicherheit (unkalibriert ± ~5 cm).
+const rRoh = A.rekonstruiere({ ...a, boden: "fertig" });
+nah("Estrich: Raumhöhe = Rohbodenhöhe − 7 cm", r.hoeheM, rRoh.hoeheM - 0.07, 0.006);
+nah("Estrich: Steckdose = Rohbodenhöhe − 7 cm", r.einbauten.find(e => e.id === "e1").hoeheM, rRoh.einbauten.find(e => e.id === "e1").hoeheM - 0.07, 0.006);
+nah("Estrich: Steckdose 23 cm ab FFB", r.einbauten.find(e => e.id === "e1").hoeheM, 0.23, Math.max(0.02, 2 * r.sigmaHoeheM));
+nah("Estrich: Raumhöhe 2,55 ab FFB", r.hoeheM, 2.55, Math.max(0.02, 2 * r.sigmaHoeheM));
 nah("Estrich: Tür steht trotzdem auf dem Boden", r.oeffnungen.find(o => o.id === "t1").bruestungM, 0, 1e-9);
 
 // ------------------------------------------------------------- 9. Grenzfälle
@@ -297,8 +302,19 @@ r = A.rekonstruiere(a);
 wahr("Altbau-Ecke: nicht AUFMASS", r.klasse !== "AUFMASS", `${r.klasse} ${JSON.stringify(r.waende.map(w => [w.laenge.toFixed(3), w.sigmaM.toFixed(3)]))}`);
 wahr("Altbau-Ecke: 2σ deckt jede Wand", r.waende.every((w, i) => 2 * w.sigmaM + 0.005 >= Math.abs(w.laenge - wa[i])),
   JSON.stringify(r.waende.map((w, i) => [w.laenge.toFixed(3), wa[i].toFixed(3), w.sigmaM.toFixed(3)])));
-wahr("Altbau-Ecke: Hinweis Glätten ausschalten", r.hinweise.some(h => /mehr, als die Messung erklärt/.test(h) && /Rechtwinklig glätten/.test(h)), r.hinweise.join(" | "));
+// Erst ein Bandmaß an der verschobenen Wand entscheidet – „Glätten aus“ auf
+// bloßen Verdacht machte rechtwinklige Räume schlechter (Prüfer, fa_L).
+const verdacht = r.hinweise.find(h => /mehr, als die Messung erklärt/.test(h)) || "";
+wahr("Altbau-Ecke: Hinweis verlangt das Bandmaß, nennt die Ecke", /mit dem Bandmaß nachmessen/.test(verdacht) && /nicht rechtwinklig \(Wand/.test(verdacht) && !/ausschalten/.test(verdacht), r.hinweise.join(" | "));
 wahr("Altbau-Ecke: nächstes Maß an der verschobenen Wand", r.naechstesMass && Math.abs(r.waende[r.naechstesMass.wandIndex].korrekturM) > 0.15);
+// Mit dem Bandmaß dort widersprechen sich die Maße unter rechten Winkeln –
+// jetzt ist die schiefe Ecke belegt, und erst jetzt heißt es „ausschalten“.
+const k3 = r.naechstesMass.wandIndex;
+a.bandmasse = { ...a.bandmasse, [k3]: wa[k3] };
+r = A.rekonstruiere(a);
+wahr("Altbau-Ecke + Kontrollmaß: Glätten ausschalten", r.hinweise.some(h => /passen nicht zu rechten Winkeln/.test(h) && /Rechtwinklig glätten“ ausschalten/.test(h)), r.hinweise.join(" | "));
+wahr("Altbau-Ecke + Kontrollmaß: nicht AUFMASS", r.klasse !== "AUFMASS", r.klasse);
+delete a.bandmasse[k3];
 a.rechtwinklig = false;
 r = A.rekonstruiere(a);
 wahr(`Altbau-Ecke ohne Glätten: max ${(maxWandFehler(r, ALT) * 100).toFixed(1)} cm ≤ 5 cm`, maxWandFehler(r, ALT) <= 0.05);
@@ -331,6 +347,77 @@ wahr("Laser ohne Kante: Höhen-Hinweis verlangt die Kante", r.hinweise.filter(h 
 a = aufnahme(HAND);
 r = A.rekonstruiere(a);
 wahr("mit Kante: Laser als Maßstab empfohlen", r.hinweise.some(h => /Noch kein Maßstab/.test(h) && /Raumhöhe \(Laser\)/.test(h)));
+
+// ------------- 14. Rechte Winkel sind eine Annahme (Prüfer, snap_mc 87°)
+// Zwei Bandmaße an einem Rechteck: Die freien Wände legt allein der Schluss
+// unter rechten Winkeln fest. Das Ergebnis sagt das (annahmen) und schlägt
+// das Kontrollmaß vor, das die Winkel prüft; danach ist es keine Annahme mehr.
+const RECHTECK = [[0, 4], [5, 4], [5, 0], [0, 0]];
+const wr = wahreLaengen(RECHTECK);
+a = vierAufnahme(RECHTECK, { ...HAND, rauschGrad: 0.1 }, 3);
+a.bandmasse = { [wr.findIndex(l => Math.abs(l - 5) < 1e-9)]: 5.0, [wr.findIndex(l => Math.abs(l - 4) < 1e-9)]: 4.0 };
+r = A.rekonstruiere(a);
+wahr("Rechteck, 2 Bandmaße: Annahme rechtwinklig genannt", r.annahmen.includes("rechtwinklig"), JSON.stringify(r.annahmen));
+wahr("Rechteck, 2 Bandmaße: Kontrollmaß vorgeschlagen", r.naechstesMass && r.naechstesMass.kontrolle && !(String(r.naechstesMass.wandIndex) in a.bandmasse), JSON.stringify(r.naechstesMass));
+wahr("Rechteck, 2 Bandmaße: freie Wände nicht ± 0,5 cm", r.waende.filter(w => w.quelle !== "band").every(w => w.sigmaM > 0.01), JSON.stringify(r.waende.map(w => w.sigmaM.toFixed(3))));
+a.bandmasse = { ...a.bandmasse, [r.naechstesMass.wandIndex]: wr[r.naechstesMass.wandIndex] };
+r = A.rekonstruiere(a);
+wahr("Rechteck + Kontrollmaß: keine Annahme mehr", r.annahmen.length === 0 && r.klasse === "AUFMASS", `${r.klasse} ${JSON.stringify(r.annahmen)}`);
+// 87°-Ecke mit zwei Bandmaßen: ~20 cm Lücke liegen an der Rauschgrenze des
+// Zielens – statistisch nicht immer zu erkennen. Dann darf AUFMASS nur unter
+// der genannten Annahme stehen, mit dem Kontrollmaß, das sie prüft; und mit
+// diesem Kontrollmaß fällt die schiefe Ecke auf.
+const SCHIEF87 = [[0, 4], [5, 4], [5, 0], [0.21, 0]];
+const w87 = wahreLaengen(SCHIEF87);
+let ohneVorbehalt = 0, kontrolleVerfehlt = 0, verdeckt = 0;
+for (let k = 1; k <= 40; k++) {
+  a = vierAufnahme(SCHIEF87, { ...HAND, rauschGrad: 0.2 }, 100 + k);
+  a.bandmasse = { [w87.findIndex(l => Math.abs(l - 5) < 1e-9)]: 5.0, [w87.findIndex(l => Math.abs(l - 4) < 1e-9)]: 4.0 };
+  r = A.rekonstruiere(a);
+  const f = r.waende.map((w, i) => Math.abs(w.laenge - w87[i]));
+  if (r.klasse !== "AUFMASS" || Math.max(...f) <= 0.10) continue;
+  verdeckt++;
+  if (!r.annahmen.includes("rechtwinklig") || !r.naechstesMass?.kontrolle) { ohneVorbehalt++; continue; }
+  a.bandmasse = { ...a.bandmasse, [r.naechstesMass.wandIndex]: w87[r.naechstesMass.wandIndex] };
+  const r2 = A.rekonstruiere(a);
+  if (r2.klasse === "AUFMASS" && !r2.hinweise.some(h => /passen nicht zu rechten Winkeln/.test(h))) kontrolleVerfehlt++;
+}
+wahr(`87°-Ecke: AUFMASS mit > 10 cm Fehler nur unter Vorbehalt (${ohneVorbehalt} von ${verdeckt})`, ohneVorbehalt === 0);
+wahr(`87°-Ecke: das Kontrollmaß deckt die Ecke auf (${kontrolleVerfehlt} verfehlt)`, kontrolleVerfehlt === 0);
+wahr(`87°-Ecke: meist schon ohne Kontrollmaß erkannt (${40 - verdeckt}/40)`, verdeckt <= 10);
+
+// ------------- 15. Ohne Glätten: Winkel tragen die Unsicherheit von h, r, δ
+// L-Raum, zwei Bandmaße, nicht kalibriert: Nahe und ferne Ecken verzerren
+// sich unterschiedlich – das gehört in die Wände (früher 2σ nur 38 %).
+const LS = [3.4, 2.6];
+let deckt = 0, aufmassFalsch = 0;
+for (let k = 1; k <= 40; k++) {
+  seed = 7 * k + 1;
+  uhr = 0;
+  const g = { ...HAND, rauschGrad: 0.15 };
+  a = A.neueAufnahme(1.45, "fertig");
+  a.rechtwinklig = false;
+  a.ecken = L.map(q => { const s = schuss(q, g, 5000, LS); return { v: s.v, t: s.t, ebene: "boden" }; });
+  a.schluss = schuss(L[0], g, 5000, LS);
+  const wl = wahreLaengen();
+  a.bandmasse = { 0: wl[0], 1: wl[1] };
+  r = A.rekonstruiere(a);
+  const f = r.waende.map((w, i) => Math.abs(w.laenge - wl[i]));
+  if (r.waende.every((w, i) => f[i] <= 2 * w.sigmaM + 0.005)) deckt++;
+  if (r.klasse === "AUFMASS" && Math.max(...f) > 0.10) aufmassFalsch++;
+}
+wahr(`ohne Glätten, L: 2σ deckt meist jede Wand (${deckt}/40)`, deckt >= 34);
+wahr(`ohne Glätten, L: nie AUFMASS mit > 10 cm Fehler (${aufmassFalsch}/40)`, aufmassFalsch === 0);
+
+// ------------- 16. Alte Aufnahmen (version 2): bekannte Höhe = Oberkante
+// Bis version 2 hieß hoeheBekanntM „Oberkante über dem gezielten Boden“ –
+// gespeicherte Aufnahmen rechnen so weiter, statt den Maßstab zu kippen.
+a = aufnahme(HAND);
+a.version = 2;
+a.oeffnungen[1].hoeheBekanntM = 2.20;      // Fenster-Oberkante, damals richtig
+r = A.rekonstruiere(a);
+wahr(`version 2, Fenster-Oberkante 2,20: max ${(maxWandFehler(r) * 100).toFixed(1)} cm ≤ 10 cm`, maxWandFehler(r) <= 0.10);
+wahr("neue Aufnahmen: version 3", A.neueAufnahme().version === 3);
 
 console.log(`raumaufnahme.test: ${ok} ok, ${fail} fail`);
 if (fail) process.exit(1);
