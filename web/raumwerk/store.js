@@ -179,7 +179,8 @@ export function speicherBelegung(projekt) {
 
 /**
  * Den aktuellen Stand beiseitelegen, bevor er ersetzt wird (Import, neues
- * Projekt, Beispiel). Ein voller Speicher ist kein Fehler – dann `false`.
+ * Projekt, Beispiel). Ein voller Speicher ist kein Fehler – dann `false`;
+ * ersetzt werden darf dann nur nach Rückfrage (`vorErsetzen`).
  */
 export function vorherSichern(projekt) {
   if (!projekt) return false;
@@ -208,6 +209,35 @@ export function vorherLaden() {
   } catch (_) {
     return null;
   }
+}
+
+/**
+ * Vor dem Ersetzen des Projekts (Import, neues Projekt, Beispiel) den Stand
+ * sichern. Passt die Sicherung nicht mehr in den Speicher, wird nie still
+ * ersetzt: `erstExportieren()` → true heißt „nichts ersetzen, erst
+ * exportieren“; sonst muss `ohneSicherung()` → true ausdrücklich zustimmen.
+ * Ergebnis: { ersetzen, gesichert, exportieren }.
+ */
+export function vorErsetzen(projekt, { erstExportieren, ohneSicherung } = {}) {
+  if (vorherSichern(projekt)) return { ersetzen: true, gesichert: true, exportieren: false };
+  if (typeof erstExportieren === "function" && erstExportieren()) return { ersetzen: false, gesichert: false, exportieren: true };
+  const ja = typeof ohneSicherung === "function" && !!ohneSicherung();
+  return { ersetzen: ja, gesichert: false, exportieren: false };
+}
+
+/**
+ * Ein Foto ins Projekt legen und sofort speichern. Passt es nicht mehr in den
+ * Speicher, wird es wieder herausgenommen – sonst bliebe das Projekt im RAM
+ * über der Grenze, und jede spätere Änderung ginge beim Schließen verloren.
+ * `true`, wenn Foto und Projekt gespeichert sind.
+ */
+export function fotoAblegen(projekt, foto) {
+  if (!Array.isArray(projekt.fotos)) projekt.fotos = [];
+  projekt.fotos.push(foto);
+  if (speichern(projekt)) return true;
+  const i = projekt.fotos.lastIndexOf(foto);
+  if (i >= 0) projekt.fotos.splice(i, 1);
+  return false;
 }
 
 /**
@@ -632,4 +662,44 @@ export function varianteLoeschen(p, index) {
   p.varianten.splice(index, 1);
   if (p.aktiveVariante >= p.varianten.length) p.aktiveVariante = p.varianten.length - 1;
   return true;
+}
+
+// ------------------------------------------- Gezielte Objekte von Hand ändern
+
+/**
+ * Von Hand geändert: Eine Öffnung oder ein Einbau aus der gespeicherten
+ * Zielaufnahme (`ausAufnahme`) gehört ab jetzt dem Nutzer – das Nachmessen
+ * rechnet sie nicht mehr neu und lässt sie, wie sie ist. Jeder Bearbeitungsweg
+ * (Blatt, Inspektor, Plan) ruft das vor der Änderung auf.
+ */
+export function vonHand(o) {
+  if (o && o.ausAufnahme) o.ausAufnahme = false;
+  return o;
+}
+
+const EINBAU_LAGE = ["befestigung", "wandIndex", "abstandM", "relX", "relY"];
+
+/**
+ * Einbau im Plan verschieben. Ein gezielter Einbau wird dabei zum Handeintrag –
+ * außer er landet wieder genau auf seiner Lage vor dem Zug (der Plan nimmt
+ * einen abgebrochenen Zug so zurück). `zug` merkt sich diese Lage, bis die
+ * App ihn beim Loslassen leert (`zug.gezielt = null`).
+ */
+export function einbauVerschieben(e, patch, zug = {}) {
+  if (e.ausAufnahme && zug.gezielt?.id !== e.id) zug.gezielt = { id: e.id, lage: EINBAU_LAGE.map(k => e[k]) };
+  Object.assign(e, patch);
+  if (zug.gezielt?.id === e.id) e.ausAufnahme = EINBAU_LAGE.every((k, i) => e[k] === zug.gezielt.lage[i]);
+  return e;
+}
+
+/**
+ * Für Bearbeitungen außerhalb der App (AR): Stand der gezielten Objekte
+ * merken; `gezielteNachpruefen` macht danach die geänderten zu Handeinträgen.
+ */
+export function gezielteMerken(liste) {
+  return (liste || []).filter(o => o && o.ausAufnahme).map(o => [o, JSON.stringify(o)]);
+}
+
+export function gezielteNachpruefen(staende) {
+  for (const [o, s] of staende || []) if (o.ausAufnahme && JSON.stringify(o) !== s) vonHand(o);
 }

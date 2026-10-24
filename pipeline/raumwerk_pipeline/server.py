@@ -25,7 +25,6 @@ abgerissene Verbindung.
 from __future__ import annotations
 
 import html
-import json
 import sys
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,7 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import tools
 from .config import Config
-from .jobs import ANGELEGT, LAEUFT, WARTET, JobStore
+from .jobs import ANGELEGT, LAEUFT, WARTET, JobStore, json_lesen, json_text
 from .stages import simuliert
 from .worker import Worker
 
@@ -93,8 +92,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(roh)
 
     def _json(self, code: int, obj) -> None:
-        self._bytes(code, json.dumps(obj, indent=2, ensure_ascii=False).encode("utf-8"),
-                    "application/json; charset=utf-8")
+        self._bytes(code, json_text(obj).encode("utf-8"), "application/json; charset=utf-8")
 
     def _text(self, code: int, text: str, typ: str = "text/html; charset=utf-8") -> None:
         self._bytes(code, text.encode("utf-8"), typ)
@@ -215,10 +213,11 @@ class _Handler(BaseHTTPRequestHandler):
             worker.einreihen(job.id)
             return self._json(202, {"gestartet": job.id, "status": WARTET})
 
-        # Auftrag anlegen.
+        # Auftrag anlegen. NaN/Infinity/1e999 → 400: einmal gespeichert, machten
+        # sie GET /jobs für jeden Browser unlesbar.
         if url.path.rstrip("/") == "/jobs":
             try:
-                daten = json.loads(self._koerper() or b"{}")
+                daten = json_lesen(self._koerper() or b"{}")
             except ValueError:
                 return self._json(400, {"fehler": "ungültiges JSON"})
             if not isinstance(daten, dict):

@@ -26,7 +26,7 @@ import { pruefe } from "../pruefung.js";
 import * as Normmasse from "../normmasse.js";
 import { anlegen, einrasten } from "../platzierung.js";
 import * as Verbindung from "./verbindung.js";
-import { uebernehmen, nachmessen, waendeMitHerkunft } from "./uebernahme.js";
+import { uebernehmen, nachmessen, waendeMitHerkunft, raumhoeheSetzen } from "./uebernahme.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -138,9 +138,13 @@ function render() {
 function speichernJetzt() {
   let ok = false;
   try { ok = Store.speichern(projekt); } catch (_) { ok = false; }
+  return gespeichertAnzeigen(ok);
+}
+
+function gespeichertAnzeigen(ok) {
   const b = $("speicherBanner");
   if (b) b.hidden = !!ok;
-  return ok;
+  return !!ok;
 }
 
 // Neu aufbauen erst, wenn der Fokus gewandert ist (Tab) und ein laufender
@@ -154,6 +158,7 @@ function renderBald() {
 document.addEventListener("pointerdown", () => { zeigerUnten = true; }, true);
 const zeigerHoch = () => {
   zeigerUnten = false;
+  einbauZug.gezielt = null;   // Zug zu Ende: ab jetzt zählt jede Änderung als Handeintrag
   if (renderWartet) { renderWartet = false; clearTimeout(renderTimer); renderTimer = setTimeout(render, 0); }
 };
 document.addEventListener("pointerup", zeigerHoch, true);
@@ -231,9 +236,11 @@ function onPlatzhalterMove(id, patch) {
 function onEinbauMove(id, patch) {
   const e = projekt.einbauten.find(x => x.id === id);
   if (!e) return;
-  Object.assign(e, patch);
+  Store.einbauVerschieben(e, patch, einbauZug);   // ein gezielter Einbau wird zum Handeintrag
   render();
 }
+// Lage eines gezielten Einbaus vor dem Zug – ein abgebrochener Zug lässt ihn gezielt.
+const einbauZug = { gezielt: null };
 
 /** Ein Klick im Platzieren-Modus setzt ein Teil – mit Umschalt bleibt der Modus scharf. */
 function onPlace(x, y) {
@@ -325,18 +332,36 @@ function renderFotos() {
 }
 
 async function fotosHinzufuegen(dateien) {
-  let fehler = 0;
+  let fehler = 0, n = 0, voll = false;
   for (const datei of dateien) {
-    try {
-      const url = await bildSkaliert(datei);
-      projekt.fotos.push({
-        id: Store.neueId("foto"), raumId: raum().id, relX: 0.5, relY: 0.5,
-        titel: datei.name.replace(/\.[^.]+$/, ""), datenUrl: url, notiz: ""
-      });
-    } catch (_) { fehler++; /* eine kaputte Datei überspringt den Rest nicht */ }
+    let url;
+    try { url = await bildSkaliert(datei); }
+    catch (_) { fehler++; continue; /* eine kaputte Datei überspringt den Rest nicht */ }
+    if (!fotoAblegen(url, datei.name.replace(/\.[^.]+$/, ""))) { voll = true; break; }
+    n++;
   }
   render();
-  if (fehler) meldung(`${fehler} Datei(en) ließen sich nicht als Bild lesen.`);
+  if (voll) speicherVollMeldung(n, dateien.length - fehler);
+  else if (fehler) meldung(`${fehler} Datei(en) ließen sich nicht als Bild lesen.`);
+}
+
+/**
+ * Ein Foto in den aktiven Raum legen und gleich speichern. Ist der Speicher
+ * voll, bleibt es draußen (`false`) – der übrige Stand bleibt speicherbar.
+ */
+function fotoAblegen(datenUrl, titel) {
+  const ok = Store.fotoAblegen(projekt, {
+    id: Store.neueId("foto"), raumId: raum().id, relX: 0.5, relY: 0.5, titel, datenUrl, notiz: ""
+  });
+  if (ok) gespeichertAnzeigen(true);
+  return ok;
+}
+
+function speicherVollMeldung(n, von) {
+  meldung(`Speicher voll – ${n} von ${von} Fotos übernommen.`, {
+    hinweise: ["Die übrigen passen nicht mehr in den Browser-Speicher. Projekt exportieren, dann Platz schaffen (z. B. Fotos entfernen)."],
+    aktion: { text: "Jetzt exportieren", fn: exportJson }
+  });
 }
 
 /** Bild einlesen und verkleinern – hält den localStorage-Speicher klein. */
@@ -503,13 +528,15 @@ function wandNachmessen(i, laengeM) {
 async function arMitKunde() {
   try {
     const mod = await import("./ar.js");
+    const einbauten = einbautenAkt();
+    const gezielt = Store.gezielteMerken(einbauten);   // in der AR geänderte werden Handeinträge
     await mod.starte({
-      raum: raum(), platzhalter: platzhalterAkt(), einbauten: einbautenAkt(),
+      raum: raum(), platzhalter: platzhalterAkt(), einbauten,
       oeffnungen: oeffnungenAkt().concat(tuerOeffnungenRaum(raum().id)),
       findeKomponente: finde, neueId: Store.neueId,
       einbauHinzufuegen: (e) => projekt.einbauten.push(e),   // vor Ort gesetzt → ins Modell
-      onAenderung: () => render(),   // sofort speichern + alle Ansichten aktualisieren
-      onEnde: () => render(),
+      onAenderung: () => { Store.gezielteNachpruefen(gezielt); render(); },   // sofort speichern + alle Ansichten aktualisieren
+      onEnde: () => { Store.gezielteNachpruefen(gezielt); render(); },
     });
   } catch (_) {
     alert("AR konnte nicht gestartet werden (Kamera/WebGL nötig).");
@@ -528,13 +555,8 @@ async function scanStarten() {
         speichernJetzt();
       },
       // Bilder der Serie auf Wunsch als Projektfotos übernehmen (schon verkleinert).
-      fotoHinzufuegen: (datenUrl, titel) => {
-        projekt.fotos.push({
-          id: Store.neueId("foto"), raumId: raum().id, relX: 0.5, relY: 0.5,
-          titel, datenUrl, notiz: ""
-        });
-        return true;
-      },
+      // Passt eines nicht mehr in den Speicher: null – scan.js hört dann auf und meldet es.
+      fotoHinzufuegen: (datenUrl, titel) => (fotoAblegen(datenUrl, titel) ? true : null),
       onEnde: () => render(),
     });
   } catch (_) {
@@ -561,7 +583,8 @@ function renderPipeline() {
       </div>`).join("") : `<p class="leer">Aufträge laden oder eine PLY-Datei öffnen.</p>`}</div>
     ${wolkeInfo ? `<div class="pip-info${wolkeInfo.simuliert ? " simuliert" : ""}">
       ${wolkeInfo.simuliert ? `<strong>SIMULATION – keine echte Messung.</strong> Wolke und Maßstab sind Demo-Werte.<br>` : ""}
-      ${zahl(wolkeInfo.punkte)} Punkte · Spanne ${zahl(wolkeInfo.spanne_m)} m
+      ${zahl(wolkeInfo.punkte)} Punkte · ${wolkeInfo.spanneM != null ? `Spanne ${esc(komma(wolkeInfo.spanneM, 2))} m`
+        : `Spanne ${zahl(wolkeInfo.spanneRoh)} Einheiten (ohne Maßstab – nicht in Metern)`}
       ${wolkeInfo.skala != null ? `<br>Maßstab ${esc(wolkeInfo.skala)} m/Einheit` : ""}
       ${wolkeInfo.qa != null ? ` · Kontrollmaß ±${esc(wolkeInfo.qa)} mm` : ""}
       ${wolkeInfo.raum ? `<br><button class="klein-knopf" id="pipRaum">Raumvorschlag in „${esc(raum().name)}“ übernehmen</button>` : ""}
@@ -636,7 +659,11 @@ async function wolkeAusText(plyText, info = {}) {
     }
   }
   const stat = wolke3d.laden(plyText);
-  wolkeInfo = { ...info, ...stat };
+  // Die Pipeline lässt die Wolke in Modelleinheiten – erst der Maßstab macht
+  // Meter daraus. Ohne Maßstab (z. B. fremde PLY) bleibt es bei „Einheiten“.
+  const skala = Number(info.skala), roh = Number(stat.spanne_m);
+  const spanneM = skala > 0 && Number.isFinite(skala) && Number.isFinite(roh) ? runde(roh * skala) : null;
+  wolkeInfo = { ...info, punkte: stat.punkte, farbig: stat.farbig, spanneRoh: stat.spanne_m, spanneM };
   wolkeGeladen = true;
   setAnsicht("wolke");
 }
@@ -841,7 +868,7 @@ function renderRaum() {
     if (!Number.isInteger(n) || n < -9 || n > 99) { markieren(gesch, "Ganze Zahl: 0 = EG, 1 = 1. OG, −1 = 1. UG"); return; }
     raum().geschoss = n; renderBald();
   });
-  zahlBinden($("rHoehe"), { min: 0.5, max: 100 }, n => { raum().hoeheM = n; renderBald(); });
+  zahlBinden($("rHoehe"), { min: 0.5, max: 100 }, n => { raumhoeheSetzen(raum(), n); renderBald(); });
   zahlBinden($("rAufbau"), { min: 0, max: 2, leer: true }, n => { raum().aufbauM = n ?? 0; renderBald(); });
   $("rAufnehmen").onclick = () => raumAufnehmen();
   panel.querySelectorAll(".w-band").forEach(inp =>
@@ -1118,17 +1145,18 @@ function renderOeffnungen() {
     if (!o) return;
     z.querySelector(".o-art").onchange = e => {
       if (!e.target.value) return;
+      Store.vonHand(o);
       o.art = e.target.value;
       Object.assign(o, Normmasse.oeffnung(o.art));            // Normmaße zur neuen Art
       const L = laengen[Number(o.wandIndex ?? 0)];
       if (L > 0) o.abstandM = runde(Math.max(0, Math.min(Number(o.abstandM) || 0, L - o.breiteM)));
       renderBald();
     };
-    z.querySelector(".o-wand").onchange = e => { if (e.target.value !== "") { o.wandIndex = parseInt(e.target.value, 10); renderBald(); } };
-    zahlBinden(z.querySelector(".o-abstand"), { min: 0, max: 100 }, v => { o.abstandM = v; renderBald(); });
-    zahlBinden(z.querySelector(".o-breite"), { min: 0.05, max: 100 }, v => { o.breiteM = v; renderBald(); });
-    zahlBinden(z.querySelector(".o-hoehe"), { min: 0.05, max: 100 }, v => { o.hoeheM = v; renderBald(); });
-    zahlBinden(z.querySelector(".o-bruestung"), { min: 0, max: 100 }, v => { o.bruestungM = v; renderBald(); });
+    z.querySelector(".o-wand").onchange = e => { if (e.target.value !== "") { Store.vonHand(o); o.wandIndex = parseInt(e.target.value, 10); renderBald(); } };
+    zahlBinden(z.querySelector(".o-abstand"), { min: 0, max: 100 }, v => { Store.vonHand(o); o.abstandM = v; renderBald(); });
+    zahlBinden(z.querySelector(".o-breite"), { min: 0.05, max: 100 }, v => { Store.vonHand(o); o.breiteM = v; renderBald(); });
+    zahlBinden(z.querySelector(".o-hoehe"), { min: 0.05, max: 100 }, v => { Store.vonHand(o); o.hoeheM = v; renderBald(); });
+    zahlBinden(z.querySelector(".o-bruestung"), { min: 0, max: 100 }, v => { Store.vonHand(o); o.bruestungM = v; renderBald(); });
     z.querySelector(".weg").onclick = () => { projekt.oeffnungen = projekt.oeffnungen.filter(x => x !== o); render(); };
   });
   $("oefPlus").onclick = () => {
@@ -1361,12 +1389,13 @@ function renderEinbauInspektor(panel, ein) {
     <p class="hint">Ziehen verschiebt den Einbau; Wandgeräte rasten an die nächste Wand.</p>
     <button class="loeschen" id="eDel">Einbau entfernen</button>`;
   $("eArt").onchange = e => {
+    Store.vonHand(ein);
     ein.art = e.target.value;
     ein.befestigung = Normmasse.befestigung(ein.art);
     ein.hoeheM = Normmasse.hoehe(ein.art);        // Norm-Höhe zur neuen Art
     renderBald();
   };
-  zahlBinden($("eHoehe"), { min: 0, max: 100, leer: true }, v => { ein.hoeheM = v; renderBald(); });
+  zahlBinden($("eHoehe"), { min: 0, max: 100, leer: true }, v => { Store.vonHand(ein); ein.hoeheM = v; renderBald(); });
   $("eDel").onclick = () => { projekt.einbauten = projekt.einbauten.filter(x => x.id !== ein.id); auswahl = null; render(); };
 }
 
@@ -1418,11 +1447,11 @@ function verdrahteKopf() {
 
   $("btnNeu").onclick = neuesProjekt;
   $("btnReset").onclick = () => {
-    if (confirm("Zum Beispielprojekt zurücksetzen? Der aktuelle Stand wird vorher als Sicherung abgelegt.")) {
-      const gesichert = vorherSichern();
-      projektErsetzen(Store.beispielProjekt());
-      meldung("Beispielprojekt geladen.", { aktion: rueckgaengigAngebot(gesichert) });
-    }
+    if (!confirm(`Zum Beispielprojekt zurücksetzen?\nDer aktuelle Stand „${projekt.name || "ohne Namen"}“ wird ersetzt. ${sicherungHinweis("er")}`)) return;
+    const s = vorErsetzenSichern();
+    if (!s) return;
+    projektErsetzen(Store.beispielProjekt());
+    meldung(`Beispielprojekt geladen.${s.gesichert ? "" : " Der vorige Stand wurde nicht gesichert."}`, { aktion: rueckgaengigAngebot(s.gesichert) });
   };
   $("btnEinpassen").onclick = () => {
     if (ansicht === "raum") plan.einpassen();
@@ -1484,7 +1513,28 @@ function projektErsetzen(neu) {
 
 function vorherSichern() {
   try { return typeof Store.vorherSichern === "function" && Store.vorherSichern(projekt); }
-  catch (_) { return false; /* die Sicherung ist eine Zugabe – ersetzt wird trotzdem nur nach Rückfrage */ }
+  catch (_) { return false; }
+}
+
+const sicherungHinweis = wer => `Vorher wird ${wer} gesichert (danach „Rückgängig“) – reicht der Speicher dafür nicht, fragt RAUMWERK noch einmal.`;
+
+/**
+ * Vor dem Ersetzen (Import, Neu, Zurücksetzen) sichern. Passt die Sicherung
+ * nicht mehr in den Speicher, wird nie still ersetzt: erst wird der Export
+ * angeboten, ohne Sicherung geht es nur nach ausdrücklicher Bestätigung.
+ * Gibt `null` zurück (nicht ersetzen) oder `{ gesichert }`.
+ */
+function vorErsetzenSichern() {
+  const name = projekt.name || "ohne Namen";
+  let v;
+  try {
+    v = Store.vorErsetzen(projekt, {
+      erstExportieren: () => confirm(`Der aktuelle Stand „${name}“ kann nicht gesichert werden – der Browser-Speicher ist voll. Ersetzt wäre er verloren.\n\nOK: erst exportieren (es wird nichts ersetzt)\nAbbrechen: ohne Sicherung weiter`),
+      ohneSicherung: () => confirm(`Wirklich ohne Sicherung ersetzen?\n„${name}“ ist danach verloren, falls er nicht exportiert ist.`)
+    });
+  } catch (_) { v = { ersetzen: false }; }
+  if (v.exportieren) exportJson();
+  return v.ersetzen ? { gesichert: !!v.gesichert } : null;
 }
 
 /** „Rückgängig“ nach Import/Neu/Zurücksetzen: die Sicherung zurückholen (wenn es eine gibt). */
@@ -1502,9 +1552,11 @@ function rueckgaengigAngebot(gesichert) {
 }
 
 function neuesProjekt() {
-  const name = prompt("Neues, leeres Projekt anlegen. Name:", "Neues Projekt");
+  const name = prompt(`Neues, leeres Projekt anlegen – „${projekt.name || "ohne Namen"}“ wird ersetzt. ${sicherungHinweis("es")}\n\nName:`, "Neues Projekt");
   if (name == null) return;
-  const gesichert = vorherSichern();
+  const s = vorErsetzenSichern();
+  if (!s) return;
+  const gesichert = s.gesichert;
   const titel = name.trim() || "Neues Projekt";
   let neu;
   if (typeof Store.leeresProjekt === "function") neu = Store.leeresProjekt(titel);
@@ -1517,7 +1569,7 @@ function neuesProjekt() {
     neu.aktiveVariante = 0;
   }
   projektErsetzen(neu);
-  meldung(`„${titel}“ angelegt.${gesichert ? " Der vorige Stand wurde gesichert." : ""}`,
+  meldung(`„${titel}“ angelegt.${gesichert ? " Der vorige Stand wurde gesichert." : " Der vorige Stand wurde nicht gesichert."}`,
     { aktion: [{ text: "Ersten Raum aufnehmen", fn: () => raumAufnehmen() }, rueckgaengigAngebot(gesichert)] });
 }
 
@@ -1548,7 +1600,8 @@ function herunterladen(name, text) {
 /**
  * Ein gesichertes Projekt wieder einlesen. Streng: Was kein Projekt ist, wird
  * mit Begründung abgewiesen, und das aktuelle Projekt bleibt unangetastet.
- * Vor dem Ersetzen wird gefragt und der aktuelle Stand gesichert.
+ * Vor dem Ersetzen wird gefragt und der aktuelle Stand gesichert – passt die
+ * Sicherung nicht in den Speicher, wird noch einmal gefragt (Export zuerst).
  */
 function importJson(datei) {
   if (!datei) return;
@@ -1560,10 +1613,11 @@ function importJson(datei) {
     try { neu = strengLesen(roh); }
     catch (e) { alert(`Import abgebrochen: ${e?.message || "Die Datei ist kein gültiges RAUMWERK-Projekt."}\n\nDas aktuelle Projekt bleibt unverändert.`); return; }
     const n = neu.raeume.length;
-    if (!confirm(`Projekt „${neu.name || datei.name}“ (${n} ${n === 1 ? "Raum" : "Räume"}) laden?\nDas aktuelle Projekt „${projekt.name || "ohne Namen"}“ wird ersetzt – vorher wird es gesichert.`)) return;
-    const gesichert = vorherSichern();
+    if (!confirm(`Projekt „${neu.name || datei.name}“ (${n} ${n === 1 ? "Raum" : "Räume"}) laden?\nDas aktuelle Projekt „${projekt.name || "ohne Namen"}“ wird ersetzt. ${sicherungHinweis("es")}`)) return;
+    const s = vorErsetzenSichern();
+    if (!s) return;
     projektErsetzen(neu);
-    meldung(`„${neu.name || datei.name}“ geladen.`, { aktion: rueckgaengigAngebot(gesichert) });
+    meldung(`„${neu.name || datei.name}“ geladen.${s.gesichert ? "" : " Der vorige Stand wurde nicht gesichert."}`, { aktion: rueckgaengigAngebot(s.gesichert) });
   };
   leser.onerror = () => alert("Die Datei konnte nicht gelesen werden.");
   leser.readAsText(datei);

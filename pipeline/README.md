@@ -16,7 +16,7 @@ Reine Python-Standardbibliothek, keine Fremdabhängigkeiten.
 | Job-Queue, ein Worker, HTTP-API, Lebenszyklus | **echt** | ja (Unit + HTTP-Rundlauf) |
 | Raumvorschlag aus Bandmaß-Zug (`raum`) | **echt** – reine Geometrie aus den eingegebenen Wandlängen/Drehungen | ja, inkl. Parität mit `web/geometrie.js` (über `node`) |
 | Maß-Solver (Rechnung) | **echt** – ab **einer** bekannten Länge | ja |
-| Modellabstände für den Maß-Solver | **echt nur im echten Modus**: aus der Rekonstruktion gelesen (Koordinaten, Punkt-IDs, Bildpunkte, Kamerahöhe über Bodenpunkten). In der Simulation erzeugt (Länge ÷ 0,37) und als `simuliert` markiert | ja (nachgebautes COLMAP-Modell, Text + binär) |
+| Modellabstände für den Maß-Solver | **echt nur im echten Modus**: aus der Rekonstruktion dieses Laufs gelesen (Bildpunkte, Kamerahöhe über Boden-Bildpunkten). In der Simulation erzeugt (Länge ÷ 0,37) und als `simuliert` markiert | ja (nachgebautes COLMAP-Modell, Text + binär) |
 | Kontrollmaß (Genauigkeitszahl §7) | **echt nur im echten Modus mit ≥ 2 Maßen**; sonst `null` + Begründung | ja |
 | SfM (COLMAP) | Kommandos stehen (inkl. `model_converter`) | **nicht im CI** – nur gegen nachgebaute Werkzeug-Ausgaben |
 | Dichte Wolke (OpenMVS) | `image_undistorter` → `InterfaceCOLMAP` → `DensifyPointCloud` → ASCII-`wolke.ply` | **nicht im CI** – Umwandlung binär→ASCII getestet |
@@ -34,7 +34,8 @@ steht separat unter `kontrollmass_abweichung_mm_simuliert`.
 **Echter Modus erfindet nichts:** Fehlen Modellpunkte, scheitert der Auftrag
 vor der teuren Rechnung mit „Modellabstände fehlen – Laser-Constraints brauchen
 Modellpunkte …". Einzelne nicht auflösbare Punkte werden mit Grund in
-`hinweise` genannt.
+`hinweise` genannt. Punkt-IDs und Modellkoordinaten werden abgelehnt (siehe
+unten) – sie gehören zu einer anderen Rekonstruktion.
 
 **Was noch fehlt:** Die Aufnahme-Apps schicken heute nur Längen, noch keine
 Modellpunkte. Für den echten Modus braucht es eine Oberfläche, in der man die
@@ -73,9 +74,11 @@ beliebige Strecke), die **Raumhöhe** oder die **Kamerahöhe über dem Boden**
   "auto": true,
   "laser": [
     { "von": "A", "bis": "B", "distanzM": 4.20,
-      "modell_a": { "punkt3d": 1234 }, "modell_b": { "bild": "IMG_001.jpg", "px": [812, 455] } },
+      "modell_a": { "bild": "IMG_001.jpg", "px": [212, 630] },
+      "modell_b": { "bild": "IMG_001.jpg", "px": [812, 455] } },
     { "von": "A", "bis": "C", "distanzM": 5.16, "kontrolle": true,
-      "modell_a": [0.12, 1.5, -3.2], "modell_b": [4.8, 1.4, -2.9] }
+      "modell_a": { "bild": "IMG_001.jpg", "px": [212, 630] },
+      "modell_b": { "bild": "IMG_004.jpg", "px": [1490, 702] } }
   ],
   "bekannte_laengen": [
     { "art": "wand", "laenge": 4.20, "drehung": 90 },
@@ -83,16 +86,23 @@ beliebige Strecke), die **Raumhöhe** oder die **Kamerahöhe über dem Boden**
     { "art": "wand", "laenge": 4.20, "drehung": 90 },
     { "art": "wand", "laenge": 3.00, "drehung": 90 },
     { "art": "raumhoehe", "laenge": 2.50 },
-    { "art": "kamerahoehe", "laenge": 1.45, "boden": [11, 12, 13], "bild": "IMG_001.jpg" }
+    { "art": "kamerahoehe", "laenge": 1.45, "bild": "IMG_001.jpg",
+      "boden": [ { "bild": "IMG_001.jpg", "px": [300, 1010] },
+                 { "bild": "IMG_001.jpg", "px": [1650, 990] },
+                 { "bild": "IMG_002.jpg", "px": [940, 1180] } ] }
   ],
   "tags": [ { "art": "ZAEHLERSCHRANK" } ]
 }
 ```
 
-- **Modellpunkt** (`modell_a`/`modell_b`, Einträge in `boden`): `[x, y, z]` im
-  Modell, eine COLMAP-Punkt-ID (`1234` oder `{"punkt3d": 1234}`) oder ein
+- **Modellpunkt** (`modell_a`/`modell_b`, Einträge in `boden`): immer ein
   Bildpunkt `{"bild", "px": [u, v], "radius_px"?}` – aufgelöst über den
   nächsten rekonstruierten Merkmalspunkt in diesem Foto (Vorgabe ≤ 10 px).
+  **Punkt-IDs (`1234`, `{"punkt3d": …}`) und Modellkoordinaten (`[x, y, z]`)
+  werden abgelehnt**, schon vor COLMAP: Jeder Lauf (auch `/start`) rechnet die
+  Rekonstruktion von vorn – neue IDs, neuer Maßstab, neue Lage. Eine ID aus
+  einem früheren Lauf gäbe es meist noch, nur als anderen Punkt; der Maßstab
+  wäre still falsch. Ein Bildpunkt hängt nur am Foto.
 - **`art`**: `wand` (Teil des Polygonzugs; mit `drehung` in Grad, positiv =
   rechts – wie im Aufmaß-Assistenten), `strecke`, `raumhoehe`, `kamerahoehe`.
   Ohne `art` gilt: mit `drehung` → `wand`, sonst `strecke`. Statt `laenge` geht
@@ -172,7 +182,7 @@ docker compose up --build
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| `POST` | `/jobs` | Auftrag anlegen (JSON siehe oben). `auto:false` → Zustand `angelegt`, rechnet erst nach `/start` |
+| `POST` | `/jobs` | Auftrag anlegen (JSON siehe oben). `auto:false` → Zustand `angelegt`, rechnet erst nach `/start`. `NaN`/`Infinity`/`1e999` → **400** „ungültiges JSON" |
 | `POST` | `/jobs/<id>/bild?name=…` | ein Bild hochladen (rohe Bytes); Namen `.`, `..`, leer, mit `/`, `\` oder NUL → **400** |
 | `POST` | `/jobs/<id>/start` | (neu) rechnen: setzt auf `wartet`, verwirft das alte Ergebnis; während `laeuft` → **409** |
 | `GET` | `/jobs` | alle Aufträge |
@@ -187,7 +197,10 @@ Zustände: `angelegt` → `wartet` → `laeuft` → `fertig` | `fehler`. Nach ei
 Neustart des Servers werden `wartet`-Aufträge eingereiht, unterbrochene
 (`laeuft`) von vorn gerechnet, `angelegt` bleibt liegen. Fehler kommen immer
 als JSON `{"fehler": …}` – nie als abgerissene Verbindung. Alle Antworten
-tragen CORS-Header.
+tragen CORS-Header. Geschrieben wird nur standardkonformes JSON: Rechnet eine
+Stufe eine nicht endliche Zahl (z. B. aus einer absurd großen Länge), endet der
+Auftrag auf `fehler`, statt `NaN` abzulegen – das würde `JSON.parse` im
+Browser und damit `GET /jobs` für alle brechen.
 
 ```bash
 # Variante A: alles in einem Aufruf (Metadaten + Längen, sofort rechnen)

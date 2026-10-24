@@ -32,6 +32,7 @@ import { VERSION, fuer, Richtung } from "../regelwerk.js";
 import { pruefe, grundriss } from "../pruefung.js";
 import { ARTEN } from "../normmasse.js";
 import { waendeMitHerkunft } from "./uebernahme.js";
+import { oeffnungen as vbOeffnungen } from "./verbindung.js";
 
 // ------------------------------------------------------------ Öffentlich
 
@@ -59,8 +60,16 @@ export function berichtHtml(projekt, opts = {}) {
     if (treffer.length) raeume = treffer;
   }
 
+  // Türen und Durchgänge aus Verbindungen – wie in Plan, 3D und AR der App
+  // abgeleitet, gegen alle Räume des Projekts (nicht nur die gewählten).
+  const tuerOeffnungen = liste(p.verbindungen).filter(v => v && typeof v === "object")
+    .flatMap(v => sicher(() => vbOeffnungen(v, alleRaeume), []).map(o => {
+      const nachbar = alleRaeume.find(r => r.id === (o.raumId === v.raumA ? v.raumB : v.raumA));
+      return { ...o, bezeichnung: `zu ${nachbar?.name || "Nachbarraum"}` };
+    }));
+
   const datum = datumText(opts.datum instanceof Date && !isNaN(opts.datum) ? opts.datum : new Date());
-  const daten = raeume.map((raum, i) => raumDaten(p, raum, platzhalterAlle, i));
+  const daten = raeume.map((raum, i) => raumDaten(p, raum, platzhalterAlle, tuerOeffnungen, i));
   const titel = `RAUMWERK – ${p.name ? String(p.name) : "Projekt"} – ${variante.name ?? ""}`;
 
   return `<!doctype html><html lang="de"><head><meta charset="utf-8">
@@ -130,8 +139,9 @@ export function bericht(projekt, variante, befunde, svgMarkup, svgGroesse) {
 // ------------------------------------------------------------ Daten je Raum
 
 /** Alles, was Deckblatt und Raumseite über einen Raum brauchen – einmal gerechnet. */
-function raumDaten(p, raum, platzhalterAlle, index) {
-  const oeffnungen = liste(p.oeffnungen).filter(o => o && o.raumId === raum.id);
+function raumDaten(p, raum, platzhalterAlle, tuerOeffnungen, index) {
+  const oeffnungen = liste(p.oeffnungen).filter(o => o && o.raumId === raum.id)
+    .concat(tuerOeffnungen.filter(o => o.raumId === raum.id));
   const einbauten = liste(p.einbauten).filter(e => e && e.raumId === raum.id);
   const fotos = liste(p.fotos).filter(f => f && f.raumId === raum.id);
   const platzhalter = platzhalterAlle.filter(ph => ph.raumId === raum.id);

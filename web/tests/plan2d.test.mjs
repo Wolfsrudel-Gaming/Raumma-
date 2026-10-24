@@ -8,6 +8,8 @@
  * Aufruf: node web/tests/plan2d.test.mjs   (Exitcode != 0 bei Fehler)
  */
 import { Plan } from "../raumwerk/plan2d.js";
+import { grundriss } from "../pruefung.js";
+import { finde } from "../komponenten.js";
 
 let ok = 0, fail = 0;
 const pruefe = (name, bedingung, info = "") => {
@@ -203,6 +205,35 @@ const hoch = (plan, id) => plan._hoch({ pointerId: id });
   runter(plan, 2, sx + 200, sy);
   pruefe("Ziehen zurückgenommen", ph.xM === 2 && ph.yM === 1.5 && zuege.length >= 2, JSON.stringify(ph));
   hoch(plan, 1); hoch(plan, 2);
+}
+
+// 7. Einrasten an die Wand: Die Breite liegt entlang der Wand – das Gerät
+//    bleibt um die halbe Breite (nicht die halbe Tiefe) von der Ecke weg und
+//    ragt nicht durch die Nachbarwand.
+{
+  const plan = new Plan(attrappe(), {});
+  plan.setModell({ raum: raum() });                // 4 × 3 m
+  const aussen = (z, k) => {
+    const g = grundriss(z, finde(k));
+    const xs = g.map(q => q[0]), ys = g.map(q => q[1]);
+    return Math.max(-Math.min(...xs), -Math.min(...ys), Math.max(...xs) - 4, Math.max(...ys) - 3);
+  };
+  for (const k of ["ZAEHLERSCHRANK", "VERTEILERSCHRANK", "SERVERSCHRANK"]) {
+    for (const [mx, my] of [[0.05, 0.05], [0.1, 0.3], [3.95, 2.95], [0.3, 0.05], [3.9, 0.1], [0.1, 2.9]]) {
+      const z = plan.einrastVorschlag({ komponente: k }, mx, my);
+      pruefe(`${k} bei (${mx}|${my}) bleibt im Raum`, aussen(z, k) < 0.005, JSON.stringify(z));
+    }
+  }
+  // Zählerschrank (B 0,60 × T 0,20) in der Ecke oben links: Mitte 0,30 entlang
+  // der Wand, 0,10 von ihr weg – früher 0,10/0,10 und 20 cm durch die Wand.
+  const z = plan.einrastVorschlag({ komponente: "ZAEHLERSCHRANK" }, 0.05, 0.05);
+  const gedreht = z.drehungGrad === 90 || z.drehungGrad === 270;
+  pruefe("Ecke: halbe Breite entlang der Wand",
+    gedreht ? z.yM === 0.3 && z.xM === 0.1 : z.xM === 0.3 && z.yM === 0.1, JSON.stringify(z));
+  // Wand kürzer als das Gerät: mittig auf der Wand.
+  plan.setModell({ raum: raum({ umriss: JSON.stringify([[0, 0], [4, 0], [4, 2.5], [3.5, 2.5], [3.5, 3], [0, 3]]) }) });
+  const kurz = plan.einrastVorschlag({ komponente: "VERTEILERSCHRANK" }, 3.6, 2.45);
+  pruefe("kurze Wand: mittig", kurz.xM === 3.75, JSON.stringify(kurz));
 }
 
 console.log(`plan2d: ${ok} ok, ${fail} fehlgeschlagen`);

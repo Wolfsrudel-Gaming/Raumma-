@@ -37,6 +37,13 @@ BEOBACHTUNGEN = {"IMG_001.jpg": [(100.0, 200.0, 1), (500.0, 210.0, 2),
                                  (520.0, 600.0, 3), (90.0, 610.0, -1)]}
 
 
+def bildpunkt(pid: int, bild: str = "IMG_001.jpg") -> dict:
+    """Ecke `pid` als Bildpunkt {bild, px} – die einzige Form, in der ein Auftrag
+    Modellpunkte angibt (Punkt-IDs gelten nur für einen Lauf)."""
+    u, v, _ = next(b for b in BEOBACHTUNGEN[bild] if b[2] == pid)
+    return {"bild": bild, "px": [u + 2, v - 1]}       # angetippt: knapp daneben
+
+
 def _rot(achse: str, winkel: float):
     c, s = math.cos(winkel), math.sin(winkel)
     if achse == "x":

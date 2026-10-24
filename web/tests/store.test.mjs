@@ -4,6 +4,9 @@
  * Farben, Kürzeln, Zahlen oder Bild-URLs), ein ungültiger Import wirft einen
  * Fehler statt das Projekt still durch das Beispiel zu ersetzen, IDs werden
  * samt aller Verweise konsistent neu vergeben, alte Stände laden weiter.
+ * Bei vollem Speicher wird nie still ersetzt (Sicherung oder Rückfrage), ein
+ * Foto, das nicht mehr passt, bleibt draußen, und von Hand geänderte gezielte
+ * Objekte werden zu Handeinträgen.
  *
  * Aufruf: node web/tests/store.test.mjs   (Exitcode != 0 bei Fehler)
  */
@@ -333,6 +336,100 @@ function attributSicher(name, p) {
   pruef("Voll: vorherSichern false, wirft nicht", wirft(() => pruef("Voll: vorherSichern false", vorherSichern(gross) === false)) === null);
   pruef("Voll: alter Stand bleibt", JSON.parse(ls.getItem("raumwerk.projekt.v1")).name === "Technikraum (Beispiel)");
   kapazitaet = Infinity;
+}
+
+// ------------------------------------- 7. Ersetzen nur mit Sicherung oder nach Rückfrage
+{
+  // Großes Projekt (viele Fotos): Hauptstand passt, eine zweite Kopie als Sicherung nicht.
+  ls.clear();
+  const gross = beispielProjekt(); gross.name = "Groß";
+  for (let i = 0; i < 14; i++) gross.fotos.push({ id: `foto-g${i}`, raumId: gross.raeume[0].id, relX: 0.5, relY: 0.5, titel: `F${i}`, datenUrl: "data:image/jpeg;base64," + "A".repeat(19000), notiz: "" });
+  pruef("Ersetzen: großes Projekt gespeichert", speichern(gross) === true);
+  kapazitaet = belegt() * 1.9;
+  const name = () => JSON.parse(ls.getItem("raumwerk.projekt.v1")).name;
+  const fragen = (exp, ohne) => {
+    const log = [];
+    return { log, erstExportieren: () => (log.push("export"), exp), ohneSicherung: () => (log.push("ohne"), ohne) };
+  };
+
+  // Sicherung scheitert → nie still ersetzen.
+  let f = fragen(true, true);
+  let v = Store.vorErsetzen(gross, f);
+  pruef("Voll: erst exportieren → nicht ersetzen", v.ersetzen === false && v.exportieren === true && v.gesichert === false, JSON.stringify(v));
+  pruef("Voll: Export zuerst angeboten, nicht weiter gefragt", gleich(f.log, ["export"]), f.log.join());
+  f = fragen(false, false);
+  v = Store.vorErsetzen(gross, f);
+  pruef("Voll: ohne Sicherung abgelehnt → nicht ersetzen", v.ersetzen === false && v.exportieren === false && gleich(f.log, ["export", "ohne"]), JSON.stringify(v));
+  f = fragen(false, true);
+  v = Store.vorErsetzen(gross, f);
+  pruef("Voll: ohne Sicherung bestätigt → ersetzen, ungesichert", v.ersetzen === true && v.gesichert === false, JSON.stringify(v));
+  pruef("Voll: ohne Rückfrage-Funktionen → nicht ersetzen", Store.vorErsetzen(gross).ersetzen === false);
+  pruef("Voll: Hauptstand unangetastet", name() === "Groß");
+  pruef("Voll: keine Sicherung vorgetäuscht", vorherLaden() === null);
+
+  // Platz genug → sichern, ohne zu fragen.
+  kapazitaet = Infinity;
+  f = fragen(true, false);
+  v = Store.vorErsetzen(gross, f);
+  pruef("Platz: gesichert, keine Rückfrage", v.ersetzen === true && v.gesichert === true && f.log.length === 0, JSON.stringify(v));
+  pruef("Platz: Sicherung lesbar", vorherLaden()?.name === "Groß");
+}
+
+// ------------------------------------- 8. Foto ablegen: voll → wieder heraus
+{
+  ls.clear();
+  const p = leeresProjekt("Fotos");
+  speichern(p);
+  const foto = i => ({ id: `foto-${i}`, raumId: p.raeume[0].id, relX: 0.5, relY: 0.5, titel: `F${i}`, datenUrl: "data:image/jpeg;base64," + "B".repeat(5000), notiz: "" });
+  kapazitaet = belegt() + 12000;   // Platz für zwei Fotos
+  const fotos = p.fotos;
+  pruef("Foto 1 abgelegt", Store.fotoAblegen(p, foto(1)) === true);
+  pruef("Foto 2 abgelegt", Store.fotoAblegen(p, foto(2)) === true);
+  pruef("Foto 3: voll → false", Store.fotoAblegen(p, foto(3)) === false);
+  pruef("Foto 3 wieder heraus (RAM)", p.fotos.length === 2 && !p.fotos.some(x => x.id === "foto-3"));
+  pruef("Fotoliste bleibt dieselbe", p.fotos === fotos);
+  pruef("gespeichert: zwei Fotos", JSON.parse(ls.getItem("raumwerk.projekt.v1")).fotos.length === 2);
+  // Danach bleibt das Projekt speicherbar – spätere Änderungen gehen nicht verloren.
+  p.name = "Fotos (geändert)";
+  pruef("spätere Änderung wird gespeichert", speichern(p) === true && JSON.parse(ls.getItem("raumwerk.projekt.v1")).name === "Fotos (geändert)");
+  kapazitaet = Infinity;
+  const ohneListe = { name: "x" };
+  pruef("Foto ablegen ohne Liste", Store.fotoAblegen(ohneListe, foto(4)) === true && ohneListe.fotos.length === 1);
+}
+
+// ------------------------------------- 9. Gezielte Objekte von Hand geändert
+{
+  const o = { id: "oef-1", art: "TUER", ausAufnahme: true };
+  pruef("vonHand: gezielt → Handeintrag", Store.vonHand(o) === o && o.ausAufnahme === false);
+  const h = { id: "oef-2", art: "TUER" };
+  Store.vonHand(h);
+  pruef("vonHand: Handeintrag bleibt ohne Feld", !("ausAufnahme" in h));
+  pruef("vonHand: null ok", wirft(() => Store.vonHand(null)) === null);
+
+  // Plan-Zug eines gezielten Einbaus
+  const zug = { gezielt: null };
+  const e = { id: "ein-1", art: "STECKDOSE", befestigung: "WAND", wandIndex: 1, abstandM: 0.5, ausAufnahme: true };
+  Store.einbauVerschieben(e, { wandIndex: 1, abstandM: 0.8 }, zug);
+  pruef("Zug: verschoben → Handeintrag", e.ausAufnahme === false && e.abstandM === 0.8);
+  Store.einbauVerschieben(e, { befestigung: "WAND", wandIndex: 1, abstandM: 0.5 }, zug);   // Plan nimmt den Zug zurück
+  pruef("Zug abgebrochen → bleibt gezielt", e.ausAufnahme === true);
+  Store.einbauVerschieben(e, { abstandM: 1.1 }, zug);
+  zug.gezielt = null;                                                                    // losgelassen
+  Store.einbauVerschieben(e, { abstandM: 0.5 }, zug);
+  pruef("nach dem Loslassen: Zurückziehen macht nicht wieder gezielt", e.ausAufnahme === false);
+  const m = { id: "ein-2", art: "SCHALTER", befestigung: "WAND", wandIndex: 0, abstandM: 0.2 };
+  Store.einbauVerschieben(m, { abstandM: 0.4 }, { gezielt: null });
+  pruef("Zug: Handeintrag bleibt ohne Feld", !("ausAufnahme" in m) && m.abstandM === 0.4);
+
+  // Änderungen außerhalb der App (AR) nachträglich erkennen
+  const a = { id: "ein-3", hoeheM: 0.3, ausAufnahme: true }, b = { id: "ein-4", hoeheM: 1.05, ausAufnahme: true }, c = { id: "ein-5", hoeheM: 1.1 };
+  const staende = Store.gezielteMerken([a, b, c]);
+  pruef("gezielteMerken: nur gezielte", staende.length === 2);
+  a.hoeheM = 0.45;
+  Store.gezielteNachpruefen(staende);
+  pruef("AR geändert → Handeintrag", a.ausAufnahme === false);
+  pruef("AR unverändert → bleibt gezielt", b.ausAufnahme === true);
+  pruef("gezielteNachpruefen: leer ok", wirft(() => Store.gezielteNachpruefen(null)) === null);
 }
 
 console.log(`store.test: ${ok} ok, ${fail} Fehler`);

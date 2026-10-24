@@ -1,5 +1,7 @@
 """HTTP-Rundlauf: anlegen → hochladen → starten → Ergebnis, plus Lebenszyklus und Uploads."""
 
+import contextlib
+import io
 import json
 import tempfile
 import threading
@@ -10,8 +12,15 @@ import urllib.request
 from pathlib import Path
 
 from raumwerk_pipeline.config import Config
-from raumwerk_pipeline.jobs import LAEUFT
+from raumwerk_pipeline.jobs import LAEUFT, NICHT_ENDLICH, json_lesen, json_text
 from raumwerk_pipeline.server import bildname_pruefen, erstellen
+
+
+def _wie_browser(roh: bytes):
+    """So streng wie JSON.parse im Browser: NaN/Infinity sind kein JSON."""
+    def kein_json(wort):
+        raise AssertionError(f"{wort} in der Antwort – JSON.parse im Browser scheitert")
+    return json.loads(roh, parse_constant=kein_json)
 
 
 class ServerTest(unittest.TestCase):
@@ -146,6 +155,55 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.json("POST", "/jobs/../start")[0], 404)
         self.assertEqual(self.json("GET", "/gibtsnicht")[0], 404)
 
+    def test_nan_und_unendlich_werden_abgelehnt_liste_bleibt_lesbar(self):
+        """
+        Regression: NaN/Infinity (und 1e999 – gültiges JSON, aber ∞) wurden
+        angenommen und gespeichert. Danach war GET /jobs kein JSON mehr
+        („Unexpected token 'N'") – die PC-App sah keinen einzigen Auftrag mehr.
+        """
+        self.json("POST", "/jobs", {"name": "gut", "laser": [{"distanzM": 4.2}]})
+        for roh in (b'{"laser": [{"distanzM": NaN}]}', b'{"laser": [{"distanzM": Infinity}]}',
+                    b'{"laser": [{"distanzM": -Infinity}]}', b'{"laser": [{"distanzM": 1e999}]}',
+                    b'{"name": "x", "tags": [-1E400]}',
+                    json.dumps({"laser": [{"distanzM": float("nan")}]}).encode()):  # Python-Client
+            with self.subTest(roh=roh):
+                code, antwort = self.json("POST", "/jobs", roh=roh)
+                self.assertEqual((code, antwort["fehler"]), (400, "ungültiges JSON"))
+        self.assertTrue(self.worker.leerlauf(timeout=10))
+        code, inhalt, _ = self.anfrage("GET", "/jobs")
+        self.assertEqual(code, 200)
+        self.assertEqual([j["name"] for j in _wie_browser(inhalt)], ["gut"])
+
+    def test_unendlich_aus_einer_stufe_wird_fehler_statt_kaputtem_json(self):
+        # 1e308 ist endlich und gültig – die Simulation rechnet daraus aber ∞.
+        _, job = self.json("POST", "/jobs", {"name": "riesig", "laser": [{"distanzM": 1e308}]})
+        fertig = self.warten(job["id"])
+        self.assertEqual(fertig["status"], "fehler")
+        self.assertEqual(fertig["fehler"], NICHT_ENDLICH)
+        for pfad in ("/jobs", f"/jobs/{job['id']}", f"/jobs/{job['id']}/result"):
+            with self.subTest(pfad=pfad):
+                code, inhalt, _ = self.anfrage("GET", pfad)
+                self.assertEqual(code, 200)
+                _wie_browser(inhalt)
+        result = (self.store.dir(job["id"]) / "result.json").read_bytes()
+        self.assertEqual(_wie_browser(result)["fehler"], NICHT_ENDLICH)
+
+    def test_alter_auftrag_mit_nan_auf_der_platte_bricht_die_liste_nicht(self):
+        _, gut = self.json("POST", "/jobs", {"name": "gut", "auto": False})
+        _, alt = self.json("POST", "/jobs", {"name": "von früher", "auto": False})
+        pfad = self.store.dir(alt["id"]) / "job.json"
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+        daten["eingabe"]["laser"] = [{"distanzM": float("nan")}]   # wie vor der Korrektur gespeichert
+        pfad.write_text(json.dumps(daten), encoding="utf-8")
+        code, inhalt, _ = self.anfrage("GET", "/jobs")
+        self.assertEqual(code, 200)
+        self.assertEqual([j["id"] for j in _wie_browser(inhalt)], [gut["id"]])
+        with contextlib.redirect_stderr(io.StringIO()) as log:      # Server loggt den Grund
+            code, inhalt, _ = self.anfrage("GET", f"/jobs/{alt['id']}")
+        self.assertEqual(code, 500)
+        self.assertIn("NaN ist kein JSON", _wie_browser(inhalt)["fehler"])
+        self.assertIn("NaN ist kein JSON", log.getvalue())
+
     def test_statusseite_escaped_namen_und_zeigt_simulation(self):
         self.json("POST", "/jobs", {"name": "<script>alert(1)</script>", "auto": False})
         code, inhalt, _ = self.anfrage("GET", "/")
@@ -160,6 +218,25 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(h["benoetigt"], ["colmap", "openmvs"])
         self.assertTrue(h["simuliert"])
+
+
+class StrengesJsonTest(unittest.TestCase):
+    def test_lesen(self):
+        self.assertEqual(json_lesen('{"a": [1, 2.5, -0.0, 1e308, null]}'),
+                         {"a": [1, 2.5, -0.0, 1e308, None]})
+        for roh in ("NaN", "[Infinity]", '{"a": -Infinity}', "[1e999]", "[-1e309]"):
+            with self.subTest(roh=roh):
+                with self.assertRaises(ValueError):
+                    json_lesen(roh)
+
+    def test_schreiben(self):
+        self.assertEqual(json.loads(json_text({"ä": 1.5})), {"ä": 1.5})
+        self.assertIn("ä", json_text({"ä": 1}))                 # ensure_ascii=False wie bisher
+        for wert in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(wert=wert):
+                with self.assertRaises(ValueError) as e:
+                    json_text({"x": [wert]})
+                self.assertEqual(str(e.exception), NICHT_ENDLICH)
 
 
 class BildnameTest(unittest.TestCase):

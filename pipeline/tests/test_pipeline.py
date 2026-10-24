@@ -35,6 +35,10 @@ DEMO_EINGABE = {
     "tags": [{"art": "ZAEHLERSCHRANK"}, {"art": "KABEL_NYM5"}],
 }
 
+# Ein Lasermaß A–B mit seinen Endpunkten als Bildpunkte (Ecke 1 und 2 in IMG_001).
+LASER_AB = {"von": "A", "bis": "B", "distanzM": 4.2,
+            "modell_a": hilfen.bildpunkt(1), "modell_b": hilfen.bildpunkt(2)}
+
 RECHTECK_ZUG = [
     {"art": "wand", "laenge": 4.20, "drehung": 90},
     {"art": "wand", "laenge": 3.00, "drehung": 90},
@@ -151,6 +155,12 @@ class SimulationTest(_Basis):
         self.assertIn("Lasermaß 2 ist kein Objekt – übersprungen.", h)
         self.assertEqual(fertig.ergebnis["massstab"]["anker_verwendet"], 1)
 
+    def test_riesige_ganzzahl_ist_keine_laenge(self):
+        # 10**400 ist gültiges JSON; float() wirft dafür OverflowError, nicht ValueError.
+        fertig = self.rechnen({"laser": [{"distanzM": 10 ** 400}, {"distanzM": 4.2}]})
+        self.assertEqual(fertig.status, FERTIG, fertig.fehler)
+        self.assertIn("Lasermaß 1 ohne gültige Länge – übersprungen.", fertig.ergebnis["hinweise"])
+
     def test_raum_aus_bandmass_zug(self):
         fertig = self.rechnen({"bekannte_laengen": RECHTECK_ZUG})
         raum = fertig.ergebnis["raum"]
@@ -232,15 +242,13 @@ class EchterModusTest(_Basis):
     def test_massstab_kommt_aus_dem_modell_nicht_aus_der_simulation(self):
         eingabe = {
             "laser": [
-                {"von": "A", "bis": "B", "distanzM": 4.2,
-                 "modell_a": {"punkt3d": 1}, "modell_b": {"punkt3d": 2}},
+                LASER_AB,
                 {"von": "B", "bis": "C", "distanzM": 3.0,
                  "modell_a": {"bild": "IMG_001.jpg", "px": [501, 211]},
                  "modell_b": {"bild": "IMG_001.jpg", "px": [519, 598]}},
                 # Diagonale: wahr 5,1614 m, Laser sagt 5,16 → Kontrollmaß ≈ 1,4 mm.
                 {"von": "A", "bis": "C", "distanzM": 5.16, "kontrolle": True,
-                 "modell_a": list(hilfen.ins_modell(hilfen.ECKEN_M[1])),
-                 "modell_b": list(hilfen.ins_modell(hilfen.ECKEN_M[3]))},
+                 "modell_a": hilfen.bildpunkt(1), "modell_b": hilfen.bildpunkt(3)},
             ],
             "bekannte_laengen": RECHTECK_ZUG,   # ohne Modellpunkte: nur Raum, kein Anker
         }
@@ -268,8 +276,7 @@ class EchterModusTest(_Basis):
         self.assertEqual(e["raum"]["umriss"], "[[0,0],[4.2,0],[4.2,3],[0,3]]")
 
     def test_kommandos_entzerren_und_laufen_mit_absoluten_pfaden(self):
-        eingabe = {"laser": [{"distanzM": 4.2, "modell_a": 1, "modell_b": 2}]}
-        self.rechnen(eingabe, bilder=3)
+        self.rechnen({"laser": [LASER_AB]}, bilder=3)
         namen = [k[1] if k[0] == "colmap" else k[0] for k in self.werkzeuge.aufrufe]
         self.assertEqual(namen, [
             "feature_extractor", "exhaustive_matcher", "mapper", "model_converter",
@@ -283,7 +290,8 @@ class EchterModusTest(_Basis):
     def test_binaeres_modell_und_kamerahoehe_als_einziges_mass(self):
         self.werkzeuge.binaer = True
         eingabe = {"bekannte_laengen": [
-            {"art": "kamerahoehe", "laenge": 1.45, "boden": [1, 2, 3, 4]}]}
+            {"art": "kamerahoehe", "laenge": 1.45,
+             "boden": [hilfen.bildpunkt(1), hilfen.bildpunkt(2), hilfen.bildpunkt(3)]}]}
         fertig = self.rechnen(eingabe, bilder=3)
         self.assertEqual(fertig.status, FERTIG, fertig.fehler)
         m = fertig.ergebnis["massstab"]
@@ -299,21 +307,54 @@ class EchterModusTest(_Basis):
         self.assertNotIn("massstab", fertig.ergebnis)
 
     def test_nicht_aufloesbare_modellpunkte_scheitern_mit_grund(self):
-        eingabe = {"laser": [{"distanzM": 4.2, "modell_a": 1, "modell_b": 99}]}
+        # (90, 610) ist ein Merkmal ohne rekonstruierten 3D-Punkt.
+        eingabe = {"laser": [{"distanzM": 4.2, "modell_a": hilfen.bildpunkt(1),
+                              "modell_b": {"bild": "IMG_001.jpg", "px": [90, 610]}}]}
         fertig = self.rechnen(eingabe, bilder=3)
         self.assertEqual(fertig.status, FEHLER)
         self.assertIn("Modellabstände fehlen", fertig.fehler)
-        self.assertIn("Punkt-ID 99", fertig.fehler)
+        self.assertIn("kein rekonstruierter 3D-Punkt", fertig.fehler)
         self.assertNotIn("massstab", fertig.ergebnis)
 
+    def test_punkt_ids_aus_frueherem_lauf_scheitern_vor_colmap(self):
+        """
+        Regression: Punkt-IDs und Modellkoordinaten stammen aus einer früheren
+        Rekonstruktion – dieser Lauf baut eine neue (andere IDs, anderer
+        Maßstab). Statt eines still falschen Maßstabs: Klartext, bevor COLMAP läuft.
+        """
+        for eingabe in (
+            {"laser": [{"distanzM": 4.2, "modell_a": {"punkt3d": 1}, "modell_b": {"punkt3d": 2}}]},
+            {"laser": [{"distanzM": 4.2, "modell_a": [0.12, 1.5, -3.2], "modell_b": [4.8, 1.4, -2.9]}]},
+            {"bekannte_laengen": [{"art": "kamerahoehe", "laenge": 1.45, "boden": [11, 12, 13]}]},
+        ):
+            with self.subTest(eingabe=eingabe):
+                self.werkzeuge.aufrufe.clear()
+                fertig = self.rechnen(eingabe, bilder=3)
+                self.assertEqual(fertig.status, FEHLER)
+                self.assertIn("Modellabstände fehlen", fertig.fehler)
+                self.assertIn("abgelehnt", fertig.fehler)
+                self.assertIn("Bildpunkt {bild, px} angeben", fertig.fehler)
+                self.assertEqual(self.werkzeuge.aufrufe, [])
+                self.assertNotIn("massstab", fertig.ergebnis)
+
+    def test_punkt_ids_neben_bildpunkten_fliessen_nicht_ein(self):
+        eingabe = {"laser": [LASER_AB, {"von": "A", "bis": "C", "distanzM": 5.16,
+                                        "modell_a": 1, "modell_b": 3}]}
+        fertig = self.rechnen(eingabe, bilder=3)
+        self.assertEqual(fertig.status, FERTIG, fertig.fehler)
+        m = fertig.ergebnis["massstab"]
+        self.assertAlmostEqual(m["skala_m_je_einheit"], hilfen.S_WAHR, places=6)
+        self.assertEqual([a["bezeichnung"] for a in m["anker"]], ["A–B"])
+        self.assertTrue(any(h.startswith("A–C: Punkt-ID 1 abgelehnt") for h in fertig.ergebnis["hinweise"]))
+
     def test_zu_wenige_bilder(self):
-        fertig = self.rechnen({"laser": [{"distanzM": 4.2, "modell_a": 1, "modell_b": 2}]}, bilder=1)
+        fertig = self.rechnen({"laser": [LASER_AB]}, bilder=1)
         self.assertEqual(fertig.status, FEHLER)
         self.assertIn("Zu wenige Bilder", fertig.fehler)
 
     def test_colmap_ohne_rekonstruktion(self):
         self.werkzeuge.mapper_ok = False
-        fertig = self.rechnen({"laser": [{"distanzM": 4.2, "modell_a": 1, "modell_b": 2}]}, bilder=3)
+        fertig = self.rechnen({"laser": [LASER_AB]}, bilder=3)
         self.assertEqual(fertig.status, FEHLER)
         self.assertIn("keine Rekonstruktion", fertig.fehler)
 
@@ -321,7 +362,7 @@ class EchterModusTest(_Basis):
         def kaputt(kommando, cfg, cwd=None):
             return tools.Lauf(kommando=kommando, rueckgabe=1, ausgabe="Kaputt: keine Merkmale")
         with mock.patch.object(tools, "ausfuehren", kaputt):
-            fertig = self.rechnen({"laser": [{"distanzM": 4.2, "modell_a": 1, "modell_b": 2}]}, bilder=3)
+            fertig = self.rechnen({"laser": [LASER_AB]}, bilder=3)
         self.assertEqual(fertig.status, FEHLER)
         self.assertIn("COLMAP scheiterte", fertig.fehler)
         self.assertIn("keine Merkmale", fertig.fehler)

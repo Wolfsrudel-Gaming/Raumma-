@@ -343,26 +343,15 @@ export async function starteScan(opts) {
     return p;
   }
 
-  /**
-   * Bilder verkleinert als Projektfotos übergeben → { n, voll }: n übernommen.
-   * Eine falsche Rückgabe heißt, das Projekt ließ sich nicht mehr speichern
-   * (das Foto ist dann schon wieder heraus) – dort aufhören (`voll`), statt
-   * weitere Bilder als übernommen zu zählen, die beim Schließen fehlen.
-   */
-  async function bilderInsProjekt() {
-    let n = 0;
-    for (let i = 0; i < bilder.length; i++) {
-      const b = bilder[i];
-      if (!b.dataUrl) continue;
+  /** Bilder verkleinert als Projektfotos übergeben → { n, voll } (siehe fotosUebernehmen). */
+  function bilderInsProjekt() {
+    return fotosUebernehmen(bilder, async (b, i) => {
+      if (!b.dataUrl) return null;
       const url = await verkleinern(b.dataUrl, FOTO_KANTE, FOTO_QUALITAET);
-      if (!url) continue;
+      if (!url) return null;
       const grad = b.pose.azimut == null ? "" : ` · ${Math.round(b.pose.azimut)}°`;
-      let r;
-      try { r = await opts.fotoHinzufuegen(url, `Bildserie · Bild ${i + 1}${grad}`); } catch (_) { r = null; }
-      if (!r) return { n, voll: true };
-      n++;
-    }
-    return { n, voll: false };
+      return { url, titel: `Bildserie · Bild ${i + 1}${grad}` };
+    }, (url, titel) => opts.fotoHinzufuegen(url, titel));
   }
 
   let beendet = false;
@@ -444,6 +433,27 @@ export async function starteScan(opts) {
 }
 
 // -------------------------------------------------------- Helfer
+
+/**
+ * Bilder nacheinander als Projektfotos übergeben → { n, voll }: n übernommen.
+ * `vorbereiten(bild, i)` liefert { url, titel } oder null (Bild überspringen),
+ * `hinzufuegen(url, titel)` das Foto oder etwas Falsches: Dann ließ sich das
+ * Projekt nicht mehr speichern (das Foto ist schon wieder heraus). Dort
+ * aufhören (`voll`), statt weitere Bilder als übernommen zu zählen, die beim
+ * Schließen der App fehlen.
+ */
+export async function fotosUebernehmen(bilder, vorbereiten, hinzufuegen) {
+  let n = 0;
+  for (let i = 0; i < bilder.length; i++) {
+    const foto = await vorbereiten(bilder[i], i);
+    if (!foto) continue;
+    let r;
+    try { r = await hinzufuegen(foto.url, foto.titel); } catch (_) { r = null; }
+    if (!r) return { n, voll: true };
+    n++;
+  }
+  return { n, voll: false };
+}
 
 /**
  * Kästchen in der Leiste behalten ihre eigene Größe: styles.css gibt allen

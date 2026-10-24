@@ -15,9 +15,11 @@ Ehrlichkeitsregeln (die wichtigste Eigenschaft dieser Datei):
   Ein Kontrollmaß wird in der Simulation **nicht** als Genauigkeitszahl
   gemeldet (`kontrollmass_abweichung_mm: null`) – es wurde nichts gemessen.
 - **Im echten Lauf wird kein Modellabstand erfunden.** Die Modellabstände der
-  bekannten Längen kommen aus der Rekonstruktion (`modell.py`: Koordinaten,
-  Punkt-IDs, Bildpunkte, Kamerahöhe über Bodenpunkten). Fehlen sie, scheitert
-  der Auftrag mit Klartext – statt eine Genauigkeit vorzutäuschen.
+  bekannten Längen kommen aus der Rekonstruktion dieses Laufs (`modell.py`:
+  Bildpunkte, Kamerahöhe über Boden-Bildpunkten). Punkt-IDs und
+  Modellkoordinaten werden abgelehnt – jeder Lauf rekonstruiert neu, sie
+  zeigten auf andere Punkte. Fehlen Modellpunkte, scheitert der Auftrag mit
+  Klartext – statt eine Genauigkeit vorzutäuschen.
 - **Ein bekanntes Maß reicht** für den Maßstab – kein Referenzwürfel nötig.
   Ab zwei Maßen gibt es zusätzlich ein Kontrollmaß.
 - **Geometrie wird nie erfunden.** Ein `raum`-Vorschlag entsteht nur aus
@@ -37,14 +39,13 @@ Eingabe eines Auftrags (alles optional außer mindestens einer bekannten Länge)
 
 from __future__ import annotations
 
-import json
 import math
 import random
 from pathlib import Path
 
 from . import geometrie, modell, ply, tools
 from .config import Config
-from .jobs import Job
+from .jobs import Job, json_text
 from .masssolver import Anker, HINWEIS_EIN_MASS, massstab_bestimmen
 
 # Verborgener „wahrer" Maßstab der Simulation: die Rekonstruktion käme in
@@ -58,8 +59,8 @@ KEIN_MASS = ("Kein bekanntes Maß – für den Maßstab genügt eine einzige bek
              "Ein Referenzwürfel ist nicht nötig.")
 
 MODELL_FEHLT = ("Modellabstände fehlen – Laser-Constraints brauchen Modellpunkte "
-                "(modell_a/modell_b als [x,y,z], Punkt-ID oder Bildpunkt {bild, px}; "
-                "Kamerahöhe mit Bodenpunkten).")
+                "(modell_a/modell_b als Bildpunkt {bild, px}; Kamerahöhe mit Bodenpunkten "
+                "als Bildpunkten).")
 
 _ARTEN = ("wand", "strecke", "kamerahoehe", "raumhoehe")
 
@@ -81,7 +82,7 @@ def _hinweis(ctx: dict, text: str) -> None:
 
 
 def _json(pfad: Path, obj) -> None:
-    pfad.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    pfad.write_text(json_text(obj), encoding="utf-8")   # nie NaN/Infinity
 
 
 # ------------------------------------------------------ Eingabe lesen
@@ -91,7 +92,7 @@ def _zahl(v) -> float | None:
         return None
     try:
         z = float(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):    # OverflowError: Ganzzahl > 1e308
         return None
     return z if math.isfinite(z) else None
 
@@ -240,10 +241,20 @@ def stage_eingabe(job: Job, ctx: dict, cfg: Config, jobdir: Path) -> dict:
     if not kand:
         raise RuntimeError(KEIN_MASS)
     n_bilder = _bilder(jobdir)
-    mit_bezug = [k for k in kand if modell.hat_modellbezug(k["eintrag"])]
+    mit_bezug, gruende = [], []
+    for k in kand:
+        if not modell.hat_modellbezug(k["eintrag"]):
+            continue
+        try:
+            modell.bezug_pruefen(k["eintrag"])   # Punkt-IDs/Koordinaten: schon hier ablehnen
+        except modell.ModellFehler as e:
+            gruende.append(f"{k['bezeichnung']}: {e}")
+            _hinweis(ctx, f"{k['bezeichnung']}: {e}")
+            continue
+        mit_bezug.append(k)
     if not _sim(ctx, cfg):
         if not mit_bezug:
-            raise RuntimeError(MODELL_FEHLT)
+            raise RuntimeError(MODELL_FEHLT + (" " + "; ".join(gruende) if gruende else ""))
         if n_bilder < 3:
             raise RuntimeError(f"Zu wenige Bilder für die Rekonstruktion: {n_bilder} "
                                "(mindestens 3, besser 20+ mit viel Überlappung).")

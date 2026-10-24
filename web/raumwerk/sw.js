@@ -18,8 +18,11 @@
  * gelöscht.
  */
 
-const CACHE = "raumwerk-app-v3";
+const CACHE = "raumwerk-app-v4";
 
+// Alle Module, die PC- und Mobil-Seite laden – auch die erst per import()
+// nachgeladenen (AR, Assistent, Scan, 3D) samt deren Importen. Fehlt eines,
+// startet die Funktion offline nicht. Geprüft in web/tests/report.test.mjs.
 const HUELLE = [
   "./", "./index.html", "./styles.css", "./manifest.webmanifest", "./icon.svg",
   "./app.js", "./plan2d.js", "./gebaeude.js", "./store.js", "./report.js",
@@ -29,7 +32,7 @@ const HUELLE = [
   "./mobil/", "./mobil/index.html", "./mobil/mobil.js", "./mobil/mobil.css",
   "../geometrie.js", "../symbole.js", "../komponenten.js", "../regelwerk.js",
   "../pruefung.js", "../normmasse.js", "../platzierung.js", "../modell3d.js",
-  "../zielen.js", "../raumaufnahme.js",
+  "../zielen.js", "../ausrichten.js", "../raumaufnahme.js",
   "../lib/three.module.min.js",
   "../lib/fonts/zillaslab-600.woff2", "../lib/fonts/zillaslab-700.woff2",
   "../lib/fonts/sourcesans-var.woff2", "../lib/fonts/plexmono-500.woff2", "../lib/fonts/plexmono-600.woff2",

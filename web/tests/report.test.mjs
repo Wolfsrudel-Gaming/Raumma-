@@ -2,11 +2,15 @@
  * Prüft den Bericht (report.js) ohne DOM: Inhalt vollständig, Maße mit
  * Dezimalkomma, Einbauten gelistet – und vor allem, dass kein Feld aus einem
  * (importierten, fremden) Projekt als HTML oder Script im Bericht landet.
+ * Dazu: Der Service Worker hält alles vor, was App und Bericht offline brauchen.
  *
  * Aufruf: node web/tests/report.test.mjs   (Exitcode != 0 bei Fehler)
  */
 import { berichtHtml, berichtOeffnen, bericht } from "../raumwerk/report.js";
 import { beispielProjekt } from "../raumwerk/store.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 let ok = 0, fail = 0;
 const pruef = (name, bed, info = "") => {
@@ -54,6 +58,7 @@ function sicher(name, html) {
 }
 
 const DATUM = new Date(2026, 9, 24);
+const X = `<img src=x onerror=alert(1)>`;
 
 // ------------------------------------------------ 1. Beispielprojekt
 const bsp = beispielProjekt();
@@ -100,6 +105,42 @@ bsp.varianten.push({ id: "v2", name: "Variante Leer", platzhalter: [] });
 html = berichtHtml(bsp, { varianteIndex: 1, datum: DATUM });
 pruef("Variante 2 gewählt", html.includes("Variante Leer") && html.includes("(2 von 2)"));
 pruef("Variante 2: keine Geräte", html.includes("keine Geräte in dieser Variante"));
+
+// Türen und Durchgänge aus Verbindungen erscheinen wie in Plan, 3D und AR der
+// App: im Grundriss als Lücke mit Zeichen, in der Öffnungstabelle und in der
+// Zählung auf dem Deckblatt – auch, wenn nur einer der beiden Räume gewählt ist.
+{
+  const vb = beispielProjekt();
+  const [technik, lager] = vb.raeume;
+  const wandGruppe = h => (h.match(/<g stroke="#1d2a2a" stroke-width="5" stroke-linecap="butt">([\s\S]*?)<\/g>/) || [, ""])[1];
+  const seite = (h, name) => h.split(`class="blatt raum"`).find(t => t.includes(`<h1>${name}</h1>`)) || "";
+  let h = berichtHtml(vb, { raumIds: [lager.id], datum: DATUM });
+  sicher("Verbindung", h);
+  const oeffnungsTeil = h.slice(h.indexOf("<h2>Öffnungen</h2>"), h.indexOf("<h2>Einbauten</h2>"));
+  pruef("Verbindung: Durchgang in der Tabelle des Lagers",
+    oeffnungsTeil.includes("Durchgang") && oeffnungsTeil.includes("(zu Technikraum)") && !oeffnungsTeil.includes("keine erfasst"), oeffnungsTeil);
+  pruef("Verbindung: Wand 4, 90 × 210, ab 1,05 m",
+    oeffnungsTeil.includes(`<td class="nw">Wand 4</td>`) && oeffnungsTeil.includes("90 cm × 210 cm") && oeffnungsTeil.includes("1,05 m"));
+  pruef("Verbindung: Deckblatt zählt die Öffnung",
+    /<td>T\.02<\/td>[\s\S]*?<td class="z">2,50<\/td>\s*<td class="z">1<\/td>/.test(h));
+  pruef("Verbindung: Lücke im Grundriss (5 Wandstücke)", zaehle(wandGruppe(h), "<line") === 5, wandGruppe(h));
+  pruef("Verbindung: Durchgangszeichen im Grundriss", zaehle(h, `fill="none" stroke-width="1.4"`) === 2);
+  h = berichtHtml(vb, { datum: DATUM });
+  pruef("Verbindung: Technikraum mit Tür und Durchgang", seite(h, "Technikraum").includes("(zu Lager)")
+    && zaehle(wandGruppe(seite(h, "Technikraum")), "<line") === 6);
+  pruef("Verbindung: Summe Öffnungen 3", /<th class="z">3<\/th><th class="z">2<\/th>/.test(h));
+  // Grenzen die Räume nicht mehr aneinander, gibt es keine Öffnung.
+  lager.xM = 6;
+  h = berichtHtml(vb, { raumIds: [lager.id], datum: DATUM });
+  pruef("Verbindung: nicht angrenzend → keine Öffnung", h.includes(`<td colspan="5">keine erfasst</td>`));
+  // Kaputte und fremde Verbindungen: kein Absturz, alles maskiert.
+  lager.xM = 4.2; lager.name = X;
+  vb.verbindungen.push(null, "x", { id: "v2", raumA: technik.id }, { id: "v3", raumA: technik.id, raumB: technik.id },
+    { id: "v4", raumA: lager.id, raumB: technik.id, art: `<script>alert(11)</script>`, breiteM: `"><x` });
+  h = berichtHtml(vb, { datum: DATUM });
+  sicher("Verbindung kaputt", h);
+  pruef("Verbindung kaputt: maskiert", !h.includes("<script>alert(11)") && h.includes("(zu &lt;img src=x onerror=alert(1)&gt;)"));
+}
 
 // ------------------------------------------------ 2. L-Raum mit Öffnungen und Einbauten
 const L = beispielProjekt();
@@ -159,7 +200,6 @@ pruef("L: Wärmequelle allein → frei", html.includes(">frei<"));
 pruef("L: kein Sentinel 9999 cm", !html.includes("9999 cm"));
 
 // ------------------------------------------------ 3. Bösartiges Projekt
-const X = `<img src=x onerror=alert(1)>`;
 const Q = `'"><script>alert(2)</script>`;
 const boese = {
   name: `'><svg onload=alert(3)>`,
@@ -217,7 +257,54 @@ for (const [name, p] of [["leer", {}], ["null", null], ["ohne Varianten", { name
   sicher(name, h);
 }
 
-// ------------------------------------------------ 5. API
+// ------------------------------------------------ 5. Service Worker: offline vollständig
+// Bericht und App sollen offline laufen. Dafür muss der Vorab-Cache (HUELLE in
+// sw.js) jede Datei enthalten, die PC- und Mobil-Seite laden – auch die erst
+// per import() nachgeladenen Module (AR, Assistent, Scan, 3D) samt deren
+// Importen. Sonst bricht z. B. der AR-Start offline mit „Kamera/WebGL nötig" ab.
+{
+  const basis = path.join(path.dirname(fileURLToPath(import.meta.url)), "../raumwerk/");
+  const sw = fs.readFileSync(basis + "sw.js", "utf8");
+  const huelleText = sw.match(/const HUELLE = (\[[\s\S]*?\]);/);
+  const huelle = huelleText ? new Function(`return ${huelleText[1]};`)() : [];
+  // "./" und "./mobil/" sind die Seiten selbst.
+  const datei = u => { const f = path.resolve(basis, u); return u.endsWith("/") ? path.join(f, "index.html") : f; };
+  const imCache = new Set(huelle.map(datei));
+  pruef("SW: HUELLE gelesen", huelle.length > 20);
+  const fehlend = huelle.filter(u => !fs.existsSync(datei(u)));
+  pruef("SW: jede Datei der HUELLE gibt es", fehlend.length === 0, fehlend.join(" "));
+
+  // Alles einsammeln, was die Seiten laden: Skripte, Stile, Manifest, Symbole,
+  // Schriften, statische und dynamische Importe.
+  const gesehen = new Set();
+  const offen = [basis + "index.html", basis + "mobil/index.html"];
+  const lokal = u => u && !/^(data:|https?:|\/\/|#)/.test(u);
+  while (offen.length) {
+    const f = offen.pop();
+    if (gesehen.has(f) || !fs.existsSync(f)) continue;
+    gesehen.add(f);
+    const text = fs.readFileSync(f, "utf8");
+    const verweise = [];
+    if (/\.html$/.test(f)) for (const m of text.matchAll(/\b(?:src|href)="([^"]+)"/g)) verweise.push(m[1]);
+    if (/\.css$/.test(f)) for (const m of text.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)) verweise.push(m[1]);
+    if (/\.m?js$/.test(f)) for (const m of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g)) verweise.push(m[1]);
+    if (/\.webmanifest$/.test(f)) for (const i of JSON.parse(text).icons || []) verweise.push(i.src);
+    for (const u of verweise.filter(lokal)) offen.push(path.resolve(path.dirname(f), u.split(/[?#]/)[0]));
+  }
+  // Skins hängt index.html per ?skin= an (Android-App) – alle vorhandenen.
+  for (const s of fs.readdirSync(basis + "skins")) if (s.endsWith(".css")) gesehen.add(basis + "skins/" + s);
+  const nichtImCache = [...gesehen].filter(f => !imCache.has(f)).map(f => path.relative(basis, f));
+  pruef("SW: alles Geladene im Vorab-Cache", nichtImCache.length === 0, nichtImCache.join(" "));
+  pruef("SW: AR-Abhängigkeit ausrichten.js im Cache", imCache.has(path.resolve(basis, "../ausrichten.js")));
+  pruef("SW: Module erreicht (inkl. Lazy-Importe)", ["ar.js", "assistent.js", "scan.js", "wolke3d.js", "../modell3d.js", "../ausrichten.js"]
+    .every(u => gesehen.has(path.resolve(basis, u))));
+  // v3 ging ohne ausrichten.js aus; erst ein neuer Cache-Name lässt
+  // installierte Clients die vollständige Liste laden.
+  const version = Number((sw.match(/const CACHE = "raumwerk-app-v(\d+)"/) || [])[1]);
+  pruef("SW: Cache-Version nach v3 erhöht", version >= 4, String(version));
+}
+
+// ------------------------------------------------ 6. API
 pruef("berichtOeffnen exportiert", typeof berichtOeffnen === "function");
 pruef("bericht (veraltet) exportiert", typeof bericht === "function");
 

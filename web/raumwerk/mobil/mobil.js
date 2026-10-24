@@ -23,7 +23,7 @@ import { Plan } from "../plan2d.js";
 import { berichtOeffnen } from "../report.js";
 import * as Verbindung from "../verbindung.js";
 import { starteAssistent } from "../assistent.js";
-import { uebernehmen, nachmessen, waendeMitHerkunft } from "../uebernahme.js";
+import { uebernehmen, nachmessen, waendeMitHerkunft, raumhoeheSetzen } from "../uebernahme.js";
 import * as G from "../../geometrie.js";
 import { KATALOG, finde } from "../../komponenten.js";
 import * as Normmasse from "../../normmasse.js";
@@ -88,13 +88,19 @@ const warnungenFuer = r => pruefe(r, platzhalter().filter(p => p.raumId === r.id
   .filter(b => b.schwere === Schwere.WARNUNG).length;
 
 let speicherWarnungGezeigt = false;
+let speicherOk = true;   // letzter Speicherversuch – die Kopfzeile zeigt es, solange er scheitert
 function speichern() {
   const ok = Store.speichern(projekt);
   if (!ok && !speicherWarnungGezeigt) {
     speicherWarnungGezeigt = true;
     if (confirm("Der Gerätespeicher ist voll (viele Fotos?). Änderungen gehen sonst beim Schließen verloren.\n\nJetzt das Projekt exportieren?")) exportieren();
   }
+  gespeichertAnzeigen(ok);
+  return ok;
+}
+function gespeichertAnzeigen(ok) {
   if (ok) speicherWarnungGezeigt = false;
+  if (ok !== speicherOk) { speicherOk = ok; syncMalen(); }
   return ok;
 }
 
@@ -322,7 +328,10 @@ function zahlFeld(label, wert, setzen, { min = 0.01, max = 100, leerErlaubt = fa
     const roh = inp.value.trim();
     if (roh === "" && leerErlaubt) { inp.classList.remove("falsch"); setzen(null); return; }
     const n = zahl(roh);
-    if (!Number.isFinite(n) || n < min || n > max) { inp.classList.add("falsch"); toast(`BITTE ${komma(min, 2)}–${komma(max, 0)} M`); return; }
+    if (!Number.isFinite(n) || n < min || n > max) {
+      inp.classList.add("falsch"); inp.dataset.hinweis = `${label.replace(/\s*\(m\)$/, "").toUpperCase()}: BITTE ${komma(min, 2)}–${komma(max, 0)} M`;
+      toast(inp.dataset.hinweis); return;
+    }
     inp.classList.remove("falsch"); setzen(n);
   });
   return el("div", { class: "feld" }, el("label", null, label), inp);
@@ -383,7 +392,7 @@ function raumSheet(r) {
         "Bandmaß eintragen, wo du nachmisst – gemessene Wände bleiben fest, der Rest wird ausgeglichen."));
 
     inhalt.append(el("div", { class: "feld-reihe" },
-      zahlFeld("Raumhöhe (m)", r.hoeheM, n => { r.hoeheM = n; speichern(); if (plan) planAktualisieren(); }, { min: 1.5, max: 20 }),
+      zahlFeld("Raumhöhe (m)", r.hoeheM, n => { raumhoeheSetzen(r, n); speichern(); if (plan) planAktualisieren(); }, { min: 1.5, max: 20 }),
       zahlFeld("Aufbau/Estrich (m)", aufbau(r), n => { r.aufbauM = n ?? 0; speichern(); neuMalen(); }, { min: 0, max: 0.5, leerErlaubt: true })));
 
     // Höhenbezug – Konzept §10
@@ -454,10 +463,17 @@ function oeffnungSheet(r, o, artNeu, entwurf) {
       // Ein noch fokussiertes Feld erst festschreiben (change feuert beim Verlassen).
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       setTimeout(() => {
+        // Ein ungültiges Feld hält das Speichern an – sonst bliebe still der alte Wert (oder die Norm).
+        const falsch = inhalt.querySelector("input.falsch");
+        if (falsch) { toast(`EINGABE PRÜFEN · ${falsch.dataset.hinweis || ""}`, 4200); falsch.focus(); return; }
         const lang = laengen[d.wandIndex] || 0;
         if (d.abstandM + d.breiteM > lang + 0.01) { toast(`PASST NICHT: WAND ${d.wandIndex + 1} IST ${komma(lang, 2)} M LANG`); return; }
         if (neu) projekt.oeffnungen.push(d);
-        else Object.assign(o, d);
+        else {
+          // Von Hand geändert: eine gezielte Öffnung wird zum Handeintrag.
+          if (Object.keys(d).some(k => k !== "ausAufnahme" && d[k] !== o[k])) Store.vonHand(d);
+          Object.assign(o, d);
+        }
         speichern(); if (plan) planAktualisieren();
         schliesseSheet(true); raumSheet(r);
       }, 0);
@@ -497,7 +513,7 @@ function planInit() {
     onEinbauSelect: id => { auswahl = { typ: "einbau", id }; planAktualisieren(); spaeter(inspektorSheet); },
     onPlace: onPlace,
     onPlatzhalterMove: (id, patch) => { const p = platzhalter().find(x => x.id === id); if (p) { Object.assign(p, patch); speichern(); planAktualisieren(); } },
-    onEinbauMove: (id, patch) => { const e = projekt.einbauten.find(x => x.id === id); if (e) { Object.assign(e, patch); speichern(); planAktualisieren(); } },
+    onEinbauMove: (id, patch) => { const e = projekt.einbauten.find(x => x.id === id); if (e) { Store.einbauVerschieben(e, patch, einbauZug); speichern(); planAktualisieren(); } },
     onMessung: e => { flaecheKnopf(); toast(e.art === "strecke" ? `MIND. ${komma(e.laengeM, 2)} M`
       : `${komma(e.flaecheM2, 2)} M² · UMFANG ${komma(e.umfangM, 2)} M`, 4200); },
     onFotoMove: (id, patch) => { const f = projekt.fotos.find(x => x.id === id); if (f) { Object.assign(f, patch); speichern(); planAktualisieren(); } },
@@ -505,7 +521,11 @@ function planInit() {
   });
   // „Fläche schließen“ erscheint, sobald drei Punkte gesetzt sind.
   $("#planSvg").addEventListener("pointerup", () => setTimeout(flaecheKnopf, 0));
+  // Zug zu Ende: ab jetzt zählt jede Änderung eines gezielten Einbaus als Handeintrag.
+  for (const t of ["pointerup", "pointercancel"]) document.addEventListener(t, () => { einbauZug.gezielt = null; }, true);
 }
+// Lage eines gezielten Einbaus vor dem Zug – ein abgebrochener Zug lässt ihn gezielt.
+const einbauZug = { gezielt: null };
 function planZeigen() {
   planInit();
   // Erst das Modell setzen, dann einpassen – sonst passt er den vorigen Raum ein.
@@ -599,6 +619,7 @@ function inspektorSheet() {
         step: "0.01", value: String(hoeheAnzeige(e)), style: "width:100%;accent-color:var(--ziegel);height:34px",
         oninput: ev => {
           const anzeige = Number(ev.target.value);
+          Store.vonHand(e);
           e.hoeheM = Math.round((anzeige - (bezug === "roh" ? aufbau() : 0)) * 100) / 100;
           wert.textContent = fmtCm(hoeheAnzeige(e));
           speichern(); planAktualisieren();
@@ -608,6 +629,7 @@ function inspektorSheet() {
       const presets = el("div", { class: "presets" });
       for (const [lbl, m] of [["30 CM", .3], ["105 CM", 1.05], ["115 CM", 1.15], ["DECKE", max]])
         presets.append(el("button", { class: "preset", onclick: () => {
+          Store.vonHand(e);
           e.hoeheM = m; range.value = String(hoeheAnzeige(e)); wert.textContent = fmtCm(hoeheAnzeige(e));
           speichern(); planAktualisieren();
         } }, lbl));
@@ -714,12 +736,14 @@ function renderAr() {
 async function arStarten() {
   try {
     const mod = await import("../ar.js");
-    await mod.starte({ raum: raum(), platzhalter: platzhalterAkt(), einbauten: einbautenAkt(),
+    const einbauten = einbautenAkt();
+    const gezielt = Store.gezielteMerken(einbauten);   // in der AR geänderte werden Handeinträge
+    await mod.starte({ raum: raum(), platzhalter: platzhalterAkt(), einbauten,
       oeffnungen: oeffnungenAkt().concat(tuerOeffnungenRaum(raum().id)),
       findeKomponente: finde, neueId: Store.neueId,
       einbauHinzufuegen: e => projekt.einbauten.push(e),
-      onAenderung: () => { speichern(); planAktualisieren(); },
-      onEnde: () => { renderAr(); planAktualisieren(); } });
+      onAenderung: () => { Store.gezielteNachpruefen(gezielt); speichern(); planAktualisieren(); },
+      onEnde: () => { Store.gezielteNachpruefen(gezielt); speichern(); renderAr(); planAktualisieren(); } });
   } catch (_) { toast("AR NICHT MÖGLICH – KAMERA/WEBGL NÖTIG"); }
 }
 
@@ -848,21 +872,35 @@ function fotoWaehlen() {
   inp.addEventListener("change", async () => {
     const dateien = [...(inp.files || [])];
     inp.remove();
+    let n = 0;
     for (const d of dateien) {
-      try { fotoAufnehmen(await bildSkaliert(d), d.name.replace(/\.[^.]+$/, "")); }
-      catch (_) { toast("BILD NICHT LESBAR"); }
+      let url;
+      try { url = await bildSkaliert(d); } catch (_) { toast("BILD NICHT LESBAR"); continue; }
+      if (!fotoAufnehmen(url, d.name.replace(/\.[^.]+$/, ""))) {
+        // Speicher voll: aufhören – fotoAufnehmen hat das Foto schon wieder herausgenommen.
+        if (dateien.length > 1) toast(`${n} VON ${dateien.length} FOTOS GESPEICHERT · GERÄTESPEICHER VOLL – PROJEKT EXPORTIEREN`, 5000);
+        break;
+      }
+      n++;
     }
     renderDoku();
   });
   document.body.append(inp); inp.click();
 }
-/** Foto ins Projekt – als Pin in der Raummitte; im Plan an die Stelle ziehen. */
+/**
+ * Foto ins Projekt – als Pin in der Raummitte; im Plan an die Stelle ziehen.
+ * Passt es nicht mehr in den Gerätespeicher, bleibt es draußen (`null`): Der
+ * übrige Stand bleibt speicherbar, und die Bildserie hört dann auf.
+ */
 function fotoAufnehmen(datenUrl, titel) {
   if (!bildUrlOk(datenUrl)) return null;
   const f = { id: Store.neueId("foto"), raumId: raum().id, relX: 0.5, relY: 0.5,
     titel: titel || `Foto ${fotosAkt().length + 1}`, datenUrl, notiz: "" };
-  projekt.fotos.push(f);
-  speichern();
+  if (!Store.fotoAblegen(projekt, f)) {
+    toast("GERÄTESPEICHER VOLL – FOTO NICHT GESPEICHERT · PROJEKT EXPORTIEREN", 5000);
+    return null;
+  }
+  gespeichertAnzeigen(true);
   toast("FOTO GESPEICHERT · PIN IM PLAN AN DIE STELLE ZIEHEN", 3500);
   return f;
 }
@@ -947,8 +985,9 @@ function importieren() {
       let neu;
       try { neu = Store.ausObjektStreng(JSON.parse(r.result)); }
       catch (e) { alert("Die Datei ist kein gültiges RAUMWERK-Projekt.\n" + (e && e.message ? e.message : "")); return; }
-      if (!confirm(`Projekt „${neu.name || "ohne Namen"}“ (${neu.raeume.length} Räume) laden? Der aktuelle Stand wird vorher gesichert.`)) return;
-      Store.vorherSichern(projekt);
+      const n = neu.raeume.length;
+      if (!confirm(`Projekt „${neu.name || "ohne Namen"}“ (${n} ${n === 1 ? "Raum" : "Räume"}) laden?\nDer aktuelle Stand „${projekt.name || "ohne Namen"}“ wird ersetzt – exportiere ihn vorher, wenn du ihn behalten willst.`)) return;
+      if (!vorErsetzenSichern()) return;
       projekt = neu; auswahl = null; speichern(); schliesseSheet(); zeigeScreen("projekte");
       toast("PROJEKT GELADEN");
     };
@@ -957,17 +996,34 @@ function importieren() {
   document.body.append(inp); inp.click();
 }
 function neuesProjekt() {
-  if (!confirm("Neues, leeres Projekt beginnen? Der aktuelle Stand wird gesichert – exportiere ihn vorher, wenn du ihn behalten willst.")) return;
-  Store.vorherSichern(projekt);
+  if (!confirm(`Neues, leeres Projekt beginnen?\nDer aktuelle Stand „${projekt.name || "ohne Namen"}“ wird ersetzt – exportiere ihn vorher, wenn du ihn behalten willst.`)) return;
+  if (!vorErsetzenSichern()) return;
   projekt = Store.leeresProjekt("Neues Projekt"); auswahl = null; paletteWahl = einbauWahl = null;
   speichern(); schliesseSheet(); zeigeScreen("projekte");
   raumSheet(raum());
 }
 function zuruecksetzen() {
-  if (!confirm("Beispielprojekt laden? Der aktuelle Stand wird gesichert, aber ersetzt.")) return;
-  Store.vorherSichern(projekt);
+  if (!confirm(`Beispielprojekt laden?\nDer aktuelle Stand „${projekt.name || "ohne Namen"}“ wird ersetzt – exportiere ihn vorher, wenn du ihn behalten willst.`)) return;
+  if (!vorErsetzenSichern()) return;
   projekt = Store.beispielProjekt(); auswahl = null; paletteWahl = einbauWahl = null;
   speichern(); schliesseSheet(); zeigeScreen("projekte");
+}
+/**
+ * Vor dem Ersetzen auf dem Gerät sichern (Notnagel). Passt die Sicherung
+ * nicht mehr in den Speicher, wird nie still ersetzt: erst wird der Export
+ * angeboten, ohne Sicherung geht es nur nach ausdrücklicher Bestätigung.
+ */
+function vorErsetzenSichern() {
+  const name = projekt.name || "ohne Namen";
+  let v;
+  try {
+    v = Store.vorErsetzen(projekt, {
+      erstExportieren: () => confirm(`„${name}“ kann nicht gesichert werden – der Gerätespeicher ist voll. Ersetzt wäre der Stand verloren.\n\nOK: erst exportieren (es wird nichts ersetzt)\nAbbrechen: ohne Sicherung weiter`),
+      ohneSicherung: () => confirm(`Wirklich ohne Sicherung ersetzen?\n„${name}“ ist danach verloren, falls er nicht exportiert ist.`)
+    });
+  } catch (_) { v = { ersetzen: false }; }
+  if (v.exportieren) exportieren();
+  return v.ersetzen;
 }
 
 // =========================================================== Sheet
@@ -1012,17 +1068,20 @@ function syncMalen() {
   // Offline-first: der lokale Stand ist die Wahrheit. Ehrlich beschriftet –
   // ein Server-Abgleich ist noch nicht angebunden.
   const online = navigator.onLine;
-  $("#syncPunkt").style.background = online ? "#8FB98A" : "var(--signal)";
-  $("#syncText").textContent = online ? "LOKAL" : "OFFLINE";
+  $("#syncPunkt").style.background = online && speicherOk ? "#8FB98A" : "var(--signal)";
+  $("#syncText").textContent = !speicherOk ? "NICHT GESPEICHERT" : online ? "LOKAL" : "OFFLINE";
 }
 
 // =========================================================== Start
 function verdrahten() {
   $("#btnDrawer").onclick = oeffneDrawer;
   $("#kopfTitel").onclick = () => zeigeScreen("projekte");
-  $("#btnSync").onclick = () => toast(navigator.onLine
-    ? "ALLES LOKAL GESPEICHERT · KEIN SERVER ANGEBUNDEN"
-    : "OFFLINE · ALLE ÄNDERUNGEN LIEGEN LOKAL BEREIT");
+  $("#btnSync").onclick = () => {
+    if (!speicherOk) { if (confirm("Der Gerätespeicher ist voll – der aktuelle Stand ist nicht gespeichert.\n\nJetzt das Projekt exportieren?")) exportieren(); return; }
+    toast(navigator.onLine
+      ? "ALLES LOKAL GESPEICHERT · KEIN SERVER ANGEBUNDEN"
+      : "OFFLINE · ALLE ÄNDERUNGEN LIEGEN LOKAL BEREIT");
+  };
   $("#fabRaum").onclick = fabRaumTippen;
   $("#fabPalette").onclick = paletteSheet;
   $("#planEinpassen").onclick = () => { if (plan) plan.einpassen(); };

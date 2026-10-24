@@ -11,6 +11,7 @@ der Rest des Kerns.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import threading
@@ -47,6 +48,41 @@ class Job:
 
     def dict(self) -> dict:
         return asdict(self)
+
+
+# ------------------------------------------------- JSON, streng nach Standard
+#
+# NaN/Infinity sind kein JSON: Pythons json liest und schreibt sie, der Browser
+# (`JSON.parse`) nicht. Ein einziger Auftrag mit `"distanzM": NaN` – oder mit
+# einer Länge, aus der eine Stufe ∞ rechnet – machte GET /jobs für jeden Client
+# unlesbar. Darum: beim Lesen ablehnen, beim Schreiben lieber scheitern.
+
+NICHT_ENDLICH = ("Ergebnis enthält eine nicht endliche Zahl (NaN/Unendlich) – "
+                 "Eingabewerte prüfen (unplausibel groß?).")
+
+
+def json_text(obj) -> str:
+    """JSON für Platte und HTTP. Wirft ValueError statt NaN/Infinity zu schreiben."""
+    try:
+        return json.dumps(obj, indent=2, ensure_ascii=False, allow_nan=False)
+    except ValueError as e:
+        raise ValueError(NICHT_ENDLICH) from e
+
+
+def json_lesen(roh):
+    """Wie json.loads, aber NaN, Infinity und Überläufe wie 1e999 → ValueError."""
+    return json.loads(roh, parse_constant=_nicht_endlich, parse_float=_endliche_zahl)
+
+
+def _nicht_endlich(wort: str):
+    raise ValueError(f"{wort} ist kein JSON")
+
+
+def _endliche_zahl(text: str) -> float:
+    z = float(text)
+    if not math.isfinite(z):
+        raise ValueError(f"Zahl {text[:20]} ist nicht endlich")
+    return z
 
 
 class JobStore:
@@ -92,7 +128,7 @@ class JobStore:
         pfad = self.dir(job.id) / "job.json"
         # Atomar ersetzen: Server-Threads lesen job.json, während der Worker schreibt.
         tmp = pfad.with_name(f"job.json.{threading.get_ident()}.tmp")
-        tmp.write_text(json.dumps(job.dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(json_text(job.dict()), encoding="utf-8")
         os.replace(tmp, pfad)
 
     def laden(self, job_id: str) -> Job | None:
@@ -101,13 +137,15 @@ class JobStore:
         pfad = self.dir(job_id) / "job.json"
         if not pfad.exists():
             return None
-        return Job(**json.loads(pfad.read_text(encoding="utf-8")))
+        return Job(**json_lesen(pfad.read_text(encoding="utf-8")))
 
     def alle(self) -> list[Job]:
         jobs = []
         for d in sorted(self.cfg.jobs_dir().glob("*/job.json")):
             try:
-                jobs.append(Job(**json.loads(d.read_text(encoding="utf-8"))))
+                # Unlesbares (auch NaN von früher) überspringen – sonst bräche
+                # eine einzige kaputte Datei die ganze Liste.
+                jobs.append(Job(**json_lesen(d.read_text(encoding="utf-8"))))
             except (ValueError, TypeError, OSError):
                 continue
         return sorted(jobs, key=lambda j: j.erstellt, reverse=True)

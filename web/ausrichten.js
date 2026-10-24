@@ -311,6 +311,17 @@ export function kameraAufStrahl(q, d) {
   return qNorm(qMal(qNorm([1 + c, a[0], a[1], a[2]]), q));
 }
 
+/**
+ * Hat der Lagesensor seit der Lage `alt` neu begonnen? Die App zählt `epoche`
+ * hoch, sobald sie den Spiel-Rotationsvektor neu anmeldet (nach Pause oder
+ * Rückkehr) – dann zählt die Gier ab einer neuen Null, und Richtungen oder
+ * eine Ausrichtung aus der alten Epoche passen nicht mehr. Im Browser fehlt
+ * `epoche` (undefined) und wechselt also nie.
+ */
+export function epocheGewechselt(alt, neu) {
+  return !!alt && !!neu && alt.epoche !== neu.epoche;
+}
+
 /** Vektor mit Quaternion [w, x, y, z] drehen. */
 export function dreheVektor(q, v) {
   const [w, x, y, z] = q;

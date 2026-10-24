@@ -8,11 +8,20 @@
  * daraus Standpunkt, Drehung und Kamerahöhe zurückgewinnen: exakt ohne
  * Rauschen, auf wenige Zentimeter mit 0,3° Zittern.
  *
+ * Dazu die Stellen der AR-Ansicht und der Feld-Hülle, die sich ohne Browser
+ * prüfen lassen: Lage-Epoche über die App-Brücke (native.js), Steg der
+ * Einbauten (ar.js) und „Bilder ins Projekt" bei vollem Speicher (scan.js).
+ *
  * Aufruf: node web/tests/ausrichten.test.mjs   (Exitcode != 0 bei Fehler)
  */
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import * as THREE from "../lib/three.module.min.js";
 import * as Z from "../zielen.js";
 import * as G from "../geometrie.js";
 import * as Au from "../ausrichten.js";
+import { stegLegen } from "../raumwerk/ar.js";
+import { fotosUebernehmen } from "../raumwerk/scan.js";
 
 let ok = 0, fail = 0;
 const nah = (name, got, want, tol = 1e-6) => {
@@ -362,6 +371,96 @@ function qMalTest(p, q) {
   nah("915×412, 640×480", quer, 2 * Math.atan(sicht / 2 / f) / Z.GRAD, 1e-9);
   wahr("Querformat zeigt weniger als 49,5°", quer < 49.5);
   wahr("ohne Video: Annahme 4:3", Math.abs(Au.anzeigeFovGrad({ elementB: 412, elementH: 915 }) - 66) < 1e-9);
+}
+
+// ------------------------------------- Lage-Epoche (App-Brücke → AR, Zielen)
+
+/** native.js (klassisches Script) in eigenem Kontext laden; `A` = AndroidNative oder null. */
+function nativeLaden(A) {
+  const hoerer = [];
+  const window = { AndroidNative: A, addEventListener: (typ, f) => hoerer.push(f), removeEventListener() {} };
+  const ctx = vm.createContext({ window, navigator: {}, setTimeout });
+  vm.runInContext(readFileSync(new URL("../raumwerk/native.js", import.meta.url), "utf8"), ctx);
+  return { N: window.__native, ctx, hoerer };
+}
+
+{
+  // App: NativeBridge.lageEmpfangen schickt {"qs":[w,x,y,z],"epoche":n}, und
+  // zwar so, wie anJs("Lage", …) es auswertet. Nach Pause/Rückkehr meldet
+  // lageAn() den Sensor neu an → neue Epoche, die Gier zählt ab neuer Null.
+  const aufrufe = [];
+  const { N, ctx } = nativeLaden({ starteSensorik() {}, stoppeSensorik() {},
+    starteLage: () => aufrufe.push("an"), stoppeLage: () => aufrufe.push("aus") });
+  const erhalten = [];
+  const weg = N.beiLage(o => erhalten.push(o));
+  const kotlin = (qs, epoche) => vm.runInContext(`window.__native && window.__native._empfangeLage(${`{"qs":[${qs.join(",")}],"epoche":${epoche}}`})`, ctx);
+  const qHoch = [0.707107, 0.707107, 0, 0];            // hochkant, Blick waagrecht
+  kotlin(qHoch, 1); kotlin(qHoch, 1); kotlin([0.5, 0.5, 0.5, 0.5], 2);
+  wahr("App-Brücke: starteLage beim ersten Hörer", aufrufe.join() === "an", aufrufe.join());
+  wahr("App-Brücke: epoche unverändert an den Hörer", erhalten.map(o => o.epoche).join() === "1,1,2", JSON.stringify(erhalten));
+  wahr("App-Brücke: wertLage trägt die Epoche", N.wertLage.epoche === 2);
+  wahr("App-Lage rechnet weiter (qs)", (Au.blickAusLage(erhalten[0]) || []).every(Number.isFinite));
+  wahr("gleiche Epoche: kein Neustart", !Au.epocheGewechselt(erhalten[0], erhalten[1]));
+  wahr("neue Epoche: Neustart (AR richtet neu aus)", Au.epocheGewechselt(erhalten[1], erhalten[2]));
+  wahr("erste Lage: kein Neustart", !Au.epocheGewechselt(null, erhalten[0]));
+  weg();
+  wahr("App-Brücke: stoppeLage nach dem letzten Hörer", aufrufe.join() === "an,aus", aufrufe.join());
+
+  // Browser: deviceorientation ohne Epoche – wechselt also nie.
+  const web = nativeLaden(null);
+  const lagen = [];
+  web.N.beiLage(o => lagen.push(o));
+  for (const h of web.hoerer) { h({ alpha: 10, beta: 80, gamma: 0 }); h({ alpha: 200, beta: 60, gamma: 5 }); }
+  wahr("Browser: Lage kommt an", lagen.length >= 2 && lagen.every(o => o.euler && o.epoche === undefined), JSON.stringify(lagen));
+  wahr("Browser: nie ein Neustart", lagen.every((o, i) => !Au.epocheGewechselt(lagen[i - 1], o)));
+}
+
+// ---------------------- Steg eines verschobenen Einbaus (Sichtkegel, ar.js)
+
+{
+  // setFromPoints ließ die Hüllkugel am alten Ort: Nach „Hierher verschieben"
+  // an die Wand hinter dem Rücken schnitt der Sichtkegel den Steg weg.
+  const steg = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial());
+  const kamera = new THREE.PerspectiveCamera(60, 412 / 860, 0.05, 50);
+  const sichtbar = ziel => {
+    kamera.position.set(0, 1.4, 0); kamera.lookAt(...ziel); kamera.updateMatrixWorld();
+    const kegel = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(kamera.projectionMatrix, kamera.matrixWorldInverse));
+    return kegel.intersectsObject(steg);
+  };
+  stegLegen(steg.geometry, [1, 0, -3], [1, 0.3, -3]);
+  wahr("Steg vorn sichtbar", sichtbar([1, 0.15, -3]));
+  stegLegen(steg.geometry, [1, 0, 3], [1, 0.3, 3]);
+  wahr("Steg nach dem Verschieben hinter den Rücken sichtbar", sichtbar([1, 0.15, 3]));
+  wahr("Steg am alten Ort weg", !sichtbar([1, 0.15, -3]));
+  nah("Hüllkugel am neuen Ort", steg.geometry.boundingSphere.center.z, 3, 1e-9);
+}
+
+// ------------------------- „Bilder ins Projekt" bei vollem Speicher (scan.js)
+
+{
+  // Die Feld-App gibt null zurück, wenn das Projekt nicht mehr speicherbar
+  // war (Foto schon wieder heraus). Vorher zählte der Scan es trotzdem mit
+  // und meldete „✓ 12 Fotos im Projekt", obwohl nur 6 gespeichert waren.
+  const bilder = Array.from({ length: 9 }, (_, i) => ({ dataUrl: i === 2 ? null : `data:${i}` }));
+  const vorbereiten = async (b, i) => b.dataUrl ? { url: b.dataUrl, titel: `Bild ${i + 1}` } : null;
+  const lauf = async frei => {
+    const titel = [];
+    const r = await fotosUebernehmen(bilder, vorbereiten, async (url, t) => { titel.push(t); return titel.length <= frei ? { id: t } : null; });
+    return { ...r, titel };
+  };
+  const voll = await lauf(4);
+  wahr("voll: 4 übernommen, dann Schluss", voll.n === 4 && voll.voll, JSON.stringify(voll));
+  wahr("voll: nach dem Fehlschlag kein weiterer Versuch", voll.titel.length === 5, voll.titel.join());
+  wahr("Bild ohne Daten übersprungen, nicht gezählt", !voll.titel.includes("Bild 3"), voll.titel.join());
+  const alle = await lauf(99);
+  wahr("Platz genug: alle 8 Bilder mit Daten", alle.n === 8 && !alle.voll, JSON.stringify(alle));
+  const sofort = await lauf(0);
+  wahr("sofort voll: 0 übernommen, ein Versuch", sofort.n === 0 && sofort.voll && sofort.titel.length === 1, JSON.stringify(sofort));
+  // false und Ausnahmen zählen wie null.
+  const falsch = await fotosUebernehmen(bilder, vorbereiten, () => false);
+  wahr("false = nicht gespeichert", falsch.n === 0 && falsch.voll);
+  const wurf = await fotosUebernehmen(bilder, vorbereiten, () => { throw new Error("QuotaExceededError"); });
+  wahr("Ausnahme = nicht gespeichert", wurf.n === 0 && wurf.voll);
 }
 
 console.log(`ausrichten.test: ${ok} ok, ${fail} fail`);

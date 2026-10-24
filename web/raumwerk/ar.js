@@ -62,6 +62,17 @@ export async function xrMoeglich() {
   catch (_) { return false; }
 }
 
+/**
+ * Steg eines Einbaus (Linie von `von` nach `bis`, three.js-Koordinaten) neu
+ * legen. setFromPoints lässt die Hüllkugel stehen – ohne Neuberechnung
+ * schnitte der Sichtkegel den Steg nach dem Verschieben am alten Ort weg.
+ */
+export function stegLegen(geo, von, bis) {
+  geo.setFromPoints([new THREE.Vector3(...von), new THREE.Vector3(...bis)]);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
 export async function starte(opts) {
   const raum = opts.raum;
   const phs = opts.platzhalter || [];
@@ -309,10 +320,7 @@ export async function starte(opts) {
     const p = einbauPos(e);
     m.box.position.set(p.x, p.h, p.z);
     m.box.rotation.set(0, -(p.winkel || 0) * Math.PI / 180, 0);   // flach an der Wand
-    m.stem.geometry.setFromPoints([new THREE.Vector3(p.x, aufbau(), p.z), new THREE.Vector3(p.x, p.h, p.z)]);
-    // setFromPoints lässt die Hüllkugel stehen – sonst schneidet der
-    // Sichtkegel den Steg am alten Ort weg.
-    m.stem.geometry.computeBoundingSphere();
+    stegLegen(m.stem.geometry, [p.x, aufbau(), p.z], [p.x, p.h, p.z]);
     const farbe = auswahl?.typ === "einbau" && auswahl.id === e.id ? FARBE.wahl : FARBE.einbau;
     m.box.material.color.setHex(farbe);
     m.stem.material.color.setHex(farbe);
@@ -482,7 +490,7 @@ export async function starte(opts) {
     // Neue Lage-Epoche (App: Sensor nach Pause/Rückkehr neu angemeldet): Der
     // Spiel-Rotationsvektor zählt die Gier dann ab einer neuen Null – alte
     // Blickrichtungen und die Ausrichtung passen nicht mehr dazu.
-    if (st.lage && o.epoche !== st.lage.epoche) lageNeuGestartet();
+    if (Au.epocheGewechselt(st.lage, o)) lageNeuGestartet();
     st.lage = o; st.qGeraet = q;
     const t = performance.now();
     st.puffer.push({ t, v });

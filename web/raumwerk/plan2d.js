@@ -743,6 +743,8 @@ export class Plan {
   _einrasten(ph, mx, my) {
     const raum = this.modell.raum;
     const komp = finde(ph.komponente);
+    // Die Breite liegt entlang der Wand (pruefung.grundriss), die Tiefe quer dazu.
+    const hb = komp ? Number(komp.breiteM) / 2 : 0;
     const ht = komp ? Number(komp.tiefeM) / 2 : 0;
     const w = G.naechsteWand(raum, mx, my);
     // An die Wand einrasten, wenn nahe genug – oder wenn außerhalb des Raums
@@ -752,7 +754,9 @@ export class Plan {
       const a = e[w.index], b = e[(w.index + 1) % e.length];
       const phi = Math.atan2(b[1] - a[1], b[0] - a[0]);
       const laenge = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      const t = Math.max(ht, Math.min(laenge - ht, w.abstand));
+      // Entlang der Wand um die halbe Breite von den Ecken weg – sonst ragt das
+      // Gerät durch die Nachbarwand. Ist die Wand zu kurz: mittig.
+      const t = laenge >= 2 * hb ? Math.max(hb, Math.min(laenge - hb, w.abstand)) : laenge / 2;
       const wx = a[0] + Math.cos(phi) * t, wy = a[1] + Math.sin(phi) * t;
       let theta = phi;
       let nx = -Math.sin(theta), ny = Math.cos(theta);

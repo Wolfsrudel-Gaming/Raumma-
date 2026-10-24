@@ -129,6 +129,8 @@ button { cursor: pointer; border: none; background: none; }
 .kopf-sync:active { background: rgba(0, 0, 0, .2); }
 .kopf-punkt { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 4px rgba(0, 0, 0, .18); }
 .kopf-sync span { font: 600 8.5px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .08em; }
+/* „NICHT GESPEICHERT“ bricht um, statt dem Titel die Breite zu nehmen. */
+#syncText { max-width: 72px; text-align: center; line-height: 1.15; }
 
 /* ------------------------------------------------------------ Screens */
 #screens { flex: 1; position: relative; overflow: hidden; }

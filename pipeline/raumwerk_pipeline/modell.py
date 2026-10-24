@@ -8,20 +8,25 @@ Diese Datei liest das spärliche COLMAP-Modell (`sparse/0`, Text- oder
 Binärformat) und löst Modellpunkte auf.
 
 Ein Modellpunkt (`modell_a` / `modell_b` eines Lasermaßes oder einer bekannten
-Länge) darf so angegeben werden:
+Länge, Einträge in `boden`) ist immer ein **Bildpunkt**:
 
-    [x, y, z]                        Koordinaten im Modell (z. B. aus einem Viewer)
-    1234   oder  {"punkt3d": 1234}   ID eines 3D-Punkts aus points3D
     {"bild": "IMG_001.jpg", "px": [u, v]}
-                                     Bildpunkt; aufgelöst über den nächsten
-                                     rekonstruierten Merkmalspunkt (≤ radius_px,
-                                     Vorgabe 10 px) in diesem Bild
+                                     aufgelöst über den nächsten rekonstruierten
+                                     Merkmalspunkt (≤ radius_px, Vorgabe 10 px)
+                                     in diesem Bild
+
+Punkt-IDs (`1234`, `{"punkt3d": 1234}`) und Modellkoordinaten (`[x, y, z]`)
+werden abgelehnt: Sie gelten nur für die Rekonstruktion, aus der sie stammen.
+Jeder Lauf (auch /start) rechnet COLMAP von vorn – neue IDs, neuer Maßstab, neue
+Lage. Eine alte ID gibt es meist trotzdem (fortlaufend nummeriert), nur ist es
+ein anderer Punkt: Der Maßstab wäre still falsch. Ein Bildpunkt dagegen hängt
+nur am Foto.
 
 Kamerahöhe über dem Boden (bekannte Länge der Art „kamerahoehe"):
 
     {"art": "kamerahoehe", "laenge": 1.45,
-     "boden": [<Modellpunkt>, <Modellpunkt>, <Modellpunkt>, …],   # ≥ 3, auf dem Boden
-     "bild": "IMG_001.jpg"}                                       # optional
+     "boden": [<Bildpunkt>, <Bildpunkt>, <Bildpunkt>, …],   # ≥ 3, auf dem Boden
+     "bild": "IMG_001.jpg"}                                 # optional
 
 Der Modellabstand ist dann der Abstand des Kamerazentrums zur Bodenebene (mit
 „bild" für genau dieses Bild, sonst gemittelt über alle registrierten Bilder –
@@ -250,24 +255,42 @@ def hat_modellbezug(eintrag: dict) -> bool:
     return eintrag.get("art") == "kamerahoehe" and bool(eintrag.get("boden"))
 
 
+NUR_BILDPUNKTE = ("Punkt-IDs und Modellkoordinaten gelten nur für den Lauf, der sie erzeugt "
+                  "hat – jeder Lauf rekonstruiert neu (neue IDs, neuer Maßstab, neue Lage). "
+                  "Bildpunkt {bild, px} angeben.")
+
+
 def punkt(ref, modell: SparseModell | None) -> Vektor:
-    """Einen Modellpunkt (Koordinaten, Punkt-ID oder Bildpunkt) auflösen."""
-    if isinstance(ref, (list, tuple)) and len(ref) == 3 and all(_ist_zahl(v) for v in ref):
-        return (float(ref[0]), float(ref[1]), float(ref[2]))
-    pid = None
-    if _ist_ganzzahl(ref):
-        pid = int(ref)
-    elif isinstance(ref, dict) and _ist_ganzzahl(ref.get("punkt3d")):
-        pid = int(ref["punkt3d"])
-    if pid is not None:
-        if modell is None:
-            raise ModellFehler(f"Punkt-ID {pid}: kein spärliches Modell vorhanden.")
-        if pid not in modell.punkte:
-            raise ModellFehler(f"Punkt-ID {pid} gibt es im Modell nicht.")
-        return modell.punkte[pid]
+    """Einen Modellpunkt (Bildpunkt) in der aktuellen Rekonstruktion auflösen."""
+    pruefen(ref)
+    return _bildpunkt(ref, modell)
+
+
+def pruefen(ref) -> None:
+    """
+    Nur die Form prüfen (ohne Modell) – damit ein Auftrag mit Punkt-IDs oder
+    Modellkoordinaten scheitert, BEVOR COLMAP eine Stunde rechnet.
+    """
     if isinstance(ref, dict) and "bild" in ref and "px" in ref:
-        return _bildpunkt(ref, modell)
-    raise ModellFehler(f"Modellpunkt nicht lesbar: {ref!r} (erwartet [x,y,z], Punkt-ID oder Bildpunkt).")
+        return
+    if isinstance(ref, (list, tuple)) and len(ref) == 3 and all(_ist_zahl(v) for v in ref):
+        raise ModellFehler(f"Modellkoordinaten {list(ref)} abgelehnt: {NUR_BILDPUNKTE}")
+    if _ist_ganzzahl(ref) or (isinstance(ref, dict) and "punkt3d" in ref):
+        pid = ref.get("punkt3d") if isinstance(ref, dict) else ref
+        raise ModellFehler(f"Punkt-ID {pid} abgelehnt: {NUR_BILDPUNKTE}")
+    raise ModellFehler(f"Modellpunkt nicht lesbar: {ref!r} (erwartet Bildpunkt {{bild, px}}).")
+
+
+def bezug_pruefen(eintrag: dict) -> None:
+    """Alle Modellpunkte eines Eintrags (modell_a/modell_b bzw. boden) der Form nach prüfen."""
+    if eintrag.get("art") == "kamerahoehe" and eintrag.get("boden"):
+        refs = eintrag["boden"]
+        if not isinstance(refs, list):
+            raise ModellFehler("Bodenpunkte: Liste von Bildpunkten erwartet.")
+    else:
+        refs = [eintrag.get("modell_a"), eintrag.get("modell_b")]
+    for ref in refs:
+        pruefen(ref)
 
 
 def _bildpunkt(ref: dict, modell: SparseModell | None) -> Vektor:

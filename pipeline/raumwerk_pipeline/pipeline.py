@@ -9,13 +9,12 @@ Ergebnis stehen.
 
 from __future__ import annotations
 
-import json
 import shutil
 import traceback
 from pathlib import Path
 
 from .config import Config
-from .jobs import FEHLER, FERTIG, LAEUFT, Job, JobStore
+from .jobs import FEHLER, FERTIG, LAEUFT, Job, JobStore, json_text
 from .stages import SIM_HINWEIS, STUFEN, simuliert
 
 
@@ -41,7 +40,9 @@ def run_job(job: Job, store: JobStore, cfg: Config) -> Job:
             job.stufe = name
             job.fortschritt = round(i / len(STUFEN), 3)
             store.speichern(job)
-            job.ergebnis.update(funktion(job, ctx, cfg, jobdir))
+            teil = funktion(job, ctx, cfg, jobdir)
+            json_text(teil)     # NaN/∞ scheitert hier – nie im gespeicherten Ergebnis
+            job.ergebnis.update(teil)
             job.ergebnis["hinweise"] = list(dict.fromkeys(ctx["hinweise"]))
             store.speichern(job)
 
@@ -66,8 +67,7 @@ def run_job(job: Job, store: JobStore, cfg: Config) -> Job:
         (jobdir / "fehler.log").write_text(traceback.format_exc(), encoding="utf-8")
 
     store.speichern(job)
-    (jobdir / "result.json").write_text(
-        json.dumps(job.ergebnis, indent=2, ensure_ascii=False), encoding="utf-8")
+    (jobdir / "result.json").write_text(json_text(job.ergebnis), encoding="utf-8")
     return job
 
 
