@@ -51,7 +51,8 @@ const SCHLUESSEL_BILDWINKEL = "raumwerk.bildwinkel";
 
 const FARBE = {
   umriss: 0xe8b44a, kante: 0xf1e9dd, boden: 0xcfe8e9, geraet: 0x2b7a78, geraetKante: 0x17494d,
-  warn: 0xc0392b, zone: 0x2e8b57, einbau: 0x3a6ea5, wahl: 0xffa500, ziel: 0xe8b44a
+  warn: 0xc0392b, zone: 0x2e8b57, einbau: 0x3a6ea5, wahl: 0xffa500, ziel: 0xe8b44a,
+  oeffnung: 0x7fbf4d
 };
 
 export async function xrMoeglich() {
@@ -63,6 +64,7 @@ export async function starte(opts) {
   const raum = opts.raum;
   const phs = opts.platzhalter || [];
   const einbauten = (opts.einbauten || []).slice();   // eigene Liste, Objekt-Refs
+  const oeffnungen = (opts.oeffnungen || []).filter(o => o && Number(o.breiteM) > 0);
   const finde = opts.findeKomponente;
   const aufbau = () => Number(raum.aufbauM) || 0;
   const raumHoehe = () => Number(raum.hoeheM) || 2.5;
@@ -193,6 +195,7 @@ export async function starte(opts) {
   raumGruppe.add(umriss);
   const matBoden = new THREE.MeshBasicMaterial({ color: FARBE.umriss, transparent: true, opacity: 0.95 });
   const matKante = new THREE.MeshBasicMaterial({ color: FARBE.kante, transparent: true, opacity: 0.6 });
+  const matOeffnung = new THREE.MeshBasicMaterial({ color: FARBE.oeffnung, transparent: true, opacity: 0.9 });
   function umrissBauen() {
     for (const m of umriss.children.slice()) { umriss.remove(m); m.geometry.dispose(); }
     const zb = bodenZ() + 0.004, zd = deckeZ();
@@ -202,6 +205,38 @@ export async function starte(opts) {
       umriss.add(balken([a[0], zd, a[1]], [b[0], zd, b[1]], 0.012, matKante));
       umriss.add(balken([a[0], 0, a[1]], [a[0], zd, a[1]], 0.012, matKante));
     });
+    // Türen und Fenster als Rahmen auf ihrer Wand – Orientierung im Kamerabild
+    // und Kontrolle, ob die Ausrichtung stimmt. Höhen zählen ab fertigem Boden.
+    for (const o of oeffnungen) {
+      const r = oeffnungRahmen(o);
+      if (!r) continue;
+      const [p0, p1] = r.unten, [p2, p3] = r.oben;
+      umriss.add(balken(p0, p1, 0.015, matOeffnung), balken(p2, p3, 0.015, matOeffnung),
+        balken(p0, p2, 0.015, matOeffnung), balken(p1, p3, 0.015, matOeffnung));
+    }
+  }
+
+  function oeffnungRahmen(o) {
+    const n = eckenR.length;
+    const i = Number(o.wandIndex);
+    if (!n || !Number.isInteger(i) || i < 0 || i >= n) return null;
+    const a = eckenR[i], b = eckenR[(i + 1) % n];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    if (len <= 0) return null;
+    const von = Math.max(0, Math.min(len, Number(o.abstandM) || 0));
+    const bis = Math.max(von, Math.min(len, von + Number(o.breiteM)));
+    if (bis - von < 0.05) return null;
+    // 1 cm in den Raum abrücken, damit der Rahmen nicht in der Wand verschwindet.
+    const mx = eckenR.reduce((s, p) => s + p[0], 0) / n, my = eckenR.reduce((s, p) => s + p[1], 0) / n;
+    let nx = -dy / len, ny = dx / len;
+    if ((mx - a[0]) * nx + (my - a[1]) * ny < 0) { nx = -nx; ny = -ny; }
+    const fenster = o.art === "FENSTER";
+    const br = o.bruestungM == null || o.bruestungM === "" ? NaN : Number(o.bruestungM);
+    const unten = aufbau() + (Number.isFinite(br) ? br : fenster ? 0.9 : 0);
+    const hoehe = Number(o.hoeheM) > 0 ? Number(o.hoeheM) : (fenster ? 1.2 : 2.01);
+    const oben = Math.min(deckeZ(), unten + hoehe);
+    const punkt = (t, z) => [a[0] + dx / len * t + nx * 0.01, z, a[1] + dy / len * t + ny * 0.01];
+    return { unten: [punkt(von, unten), punkt(bis, unten)], oben: [punkt(von, oben), punkt(bis, oben)] };
   }
 
   // Geräte-Klötzchen (Kontext) + Freiraumzonen.

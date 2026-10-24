@@ -505,6 +505,7 @@ async function arMitKunde() {
     const mod = await import("./ar.js");
     await mod.starte({
       raum: raum(), platzhalter: platzhalterAkt(), einbauten: einbautenAkt(),
+      oeffnungen: oeffnungenAkt().concat(tuerOeffnungenRaum(raum().id)),
       findeKomponente: finde, neueId: Store.neueId,
       einbauHinzufuegen: (e) => projekt.einbauten.push(e),   // vor Ort gesetzt → ins Modell
       onAenderung: () => render(),   // sofort speichern + alle Ansichten aktualisieren
